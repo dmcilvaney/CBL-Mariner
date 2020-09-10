@@ -4,14 +4,17 @@ Name:           secilc
 Version:        2.9
 Release:        1%{?dist}
 Summary:        The SELinux CIL Compiler
-
 License:        BSD
-URL:            https://github.com/SELinuxProject/selinux/wiki
-Source0:        https://github.com/SELinuxProject/selinux/releases/download/20190315/secilc-2.9.tar.gz
+URL:            https://github.com/SELinuxProject/selinux
+Vendor:         Microsoft Corporation
+Distribution:   Mariner
+Source0:        %{url}/releases/download/20190315/%{name}-%{version}.tar.gz
 Patch0001:	0001-Allow-setting-arguments-to-xmlto-via-environmental-v.patch
 
-BuildRequires:  gcc
-BuildRequires:  libsepol-devel >= %{libsepolver}, flex, xmlto
+BuildRequires: gcc
+BuildRequires: libsepol-devel >= %{libsepolver}
+BuildRequires: flex
+BuildRequires: xmlto
 
 %description
 The SELinux CIL Compiler is a compiler that converts the CIL language as
@@ -43,7 +46,8 @@ make %{?_smp_mflags} DESTDIR="%{buildroot}" SBINDIR="%{buildroot}%{_sbindir}" LI
 
 %changelog
 * Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
-- Initial import from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Fri Jul 26 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2.9-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild

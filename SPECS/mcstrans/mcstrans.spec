@@ -1,20 +1,24 @@
-Summary: SELinux Translation Daemon
-Name: mcstrans
-Version: 2.9
-Release: 1%{?dist}
-License: GPL+
-Url: https://github.com/SELinuxProject/selinux/wiki
-Source: https://github.com/SELinuxProject/selinux/releases/download/20190315/mcstrans-2.9.tar.gz
-Source2: secolor.conf.8
+Summary:       SELinux Translation Daemon
+Name:          mcstrans
+Version:       2.9
+Release:       1%{?dist}
+License:       GPLv2+
+Url:           https://github.com/SELinuxProject/selinux/wiki
+Vendor:        Microsoft Corporation
+Distribution:  Mariner
+Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/mcstrans-2.9.tar.gz
+Source1:       secolor.conf.8
 BuildRequires: gcc
 BuildRequires: libselinux-devel >= %{version}
-BuildRequires: libcap-devel pcre-devel libsepol-devel
+BuildRequires: libcap-devel
+BuildRequires: pcre-devel
+BuildRequires: libsepol-devel
 BuildRequires: systemd
-Requires: pcre
+Requires:      pcre
 %{?systemd_requires}
-Provides: setransd
-Provides: libsetrans
-Obsoletes: libsetrans
+Provides:      setransd
+Provides:      libsetrans
+Obsoletes:     libsetrans
 
 %description
 Security-enhanced Linux is a feature of the Linux® kernel and a number
@@ -50,7 +54,7 @@ rm -f %{buildroot}%{_libdir}/*.a
 cp -r share/* %{buildroot}%{_usr}/share/mcstrans/
 # Systemd
 rm -rf %{buildroot}/%{_sysconfdir}/rc.d/init.d/mcstrans
-install -m644 %{SOURCE2} %{buildroot}%{_mandir}/man8/
+install -m644 %{SOURCE1} %{buildroot}%{_mandir}/man8/
 
 %post
 %systemd_post mcstrans.service
@@ -62,6 +66,7 @@ install -m644 %{SOURCE2} %{buildroot}%{_mandir}/man8/
 %systemd_postun mcstrans.service
 
 %files
+%license COPYING
 %{_mandir}/man8/mcs.8.gz
 %{_mandir}/man8/mcstransd.8.gz
 %{_mandir}/man8/setrans.conf.8.gz
@@ -69,7 +74,7 @@ install -m644 %{SOURCE2} %{buildroot}%{_mandir}/man8/
 %{_mandir}/ru/man8/mcstransd.8.gz
 %{_mandir}/ru/man8/setrans.conf.8.gz
 %{_mandir}/man8/secolor.conf.8.gz
-/usr/sbin/mcstransd
+%{_sbindir}/mcstransd
 %{_unitdir}/mcstrans.service
 %dir %{_sysconfdir}/selinux/mls/setrans.d
 
@@ -85,7 +90,8 @@ install -m644 %{SOURCE2} %{buildroot}%{_mandir}/man8/
 
 %changelog
 * Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
-- Initial import from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Thu Jul 25 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2.9-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild

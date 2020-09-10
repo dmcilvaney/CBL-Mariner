@@ -10,22 +10,23 @@
 %global _python_bytecompile_extra 0
 
 %{!?python3_sitelib: %global python3_sitelib %(python3 -c "from distutils.sysconfig import get_python_lib;print(get_python_lib())")}
-Summary: SELinux policy core utilities
-Name:    policycoreutils
-Version: 2.9
-Release: 1%{?dist}
-License: GPLv2
-# https://github.com/SELinuxProject/selinux/wiki/Releases
-Source0: https://github.com/SELinuxProject/selinux/releases/download/20190315/policycoreutils-2.9.tar.gz
-Source1: https://github.com/SELinuxProject/selinux/releases/download/20190315/selinux-python-2.9.tar.gz
-Source2: https://github.com/SELinuxProject/selinux/releases/download/20190315/semodule-utils-2.9.tar.gz
-Source3: https://github.com/SELinuxProject/selinux/releases/download/20190315/restorecond-2.9.tar.gz
-URL:     https://github.com/SELinuxProject/selinux
-Source5: selinux-autorelabel
-Source6: selinux-autorelabel.service
-Source7: selinux-autorelabel-mark.service
-Source8: selinux-autorelabel.target
-Source9: selinux-autorelabel-generator.sh
+Summary:       SELinux policy core utilities
+Name:          policycoreutils
+Version:       2.9
+Release:       1%{?dist}
+License:       GPLv2
+URL:           https://github.com/SELinuxProject/selinux
+Vendor:        Microsoft Corporation
+Distribution:  Mariner
+Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/policycoreutils-2.9.tar.gz
+Source1:       https://github.com/SELinuxProject/selinux/releases/download/20190315/selinux-python-2.9.tar.gz
+Source2:       https://github.com/SELinuxProject/selinux/releases/download/20190315/semodule-utils-2.9.tar.gz
+Source3:       https://github.com/SELinuxProject/selinux/releases/download/20190315/restorecond-2.9.tar.gz
+Source5:       selinux-autorelabel
+Source6:       selinux-autorelabel.service
+Source7:       selinux-autorelabel-mark.service
+Source8:       selinux-autorelabel.target
+Source9:       selinux-autorelabel-generator.sh
 
 Obsoletes: policycoreutils < 2.0.61-2
 Conflicts: initscripts < 9.66
@@ -33,14 +34,27 @@ Provides: /sbin/fixfiles
 Provides: /sbin/restorecon
 
 BuildRequires: gcc
-BuildRequires: pam-devel libsepol-devel >= %{libsepolver} libsemanage-devel >= %{libsemanagever} libselinux-devel >= %{libselinuxver}  libcap-devel audit-libs >=  %{libauditver} gettext
+BuildRequires: pam-devel
+BuildRequires: libsepol-devel >= %{libsepolver}
+BuildRequires: libsemanage-devel >= %{libsemanagever}
+BuildRequires: libselinux-devel >= %{libselinuxver}
+BuildRequires: libcap-devel
+BuildRequires: audit-libs >= %{libauditver}
+BuildRequires: gettext
 BuildRequires: audit-devel
 BuildRequires: dbus-devel dbus-glib-devel
 BuildRequires: python3-devel
 BuildRequires: systemd
 BuildRequires: git
-Requires: util-linux grep gawk diffutils rpm sed
-Requires: libsepol >= %{libsepolver} coreutils libselinux-utils >=  %{libselinuxver}
+Requires: util-linux
+Requires: grep
+Requires: gawk
+Requires: diffutils
+Requires: rpm
+Requires: sed
+Requires: libsepol >= %{libsepolver}
+Requires: coreutils
+Requires: libselinux-utils >=  %{libselinuxver}
 
 %description
 Security-enhanced Linux is a feature of the Linux® kernel and a number
@@ -139,6 +153,7 @@ The policycoreutils-python-utils package contains the management tools use to ma
 an SELinux environment.
 
 %files python-utils
+%license python/copying
 %{_sbindir}/semanage
 %{_bindir}/chcat
 %{_bindir}/audit2allow
@@ -167,6 +182,7 @@ The policycoreutils-python3 package contains the interfaces that can be used
 by python 3 in an SELinux environment.
 
 %files python3
+%license python/COPYING
 %{python3_sitelib}/seobject.py*
 %{python3_sitelib}/sepolgen
 %dir %{python3_sitelib}/sepolicy
@@ -186,7 +202,7 @@ by python 3 in an SELinux environment.
 %{python3_sitelib}/sepolicy/sedbus.py*
 %{python3_sitelib}/sepolicy*.egg-info
 %{python3_sitelib}/sepolicy/__pycache__
-/usr/share/man/man8/sepolicy-gui.8.gz
+%_mandir}/man8/sepolicy-gui.8.gz
 
 %package devel
 Summary: SELinux policy core policy devel utilities
@@ -200,8 +216,8 @@ The policycoreutils-devel package contains the management tools use to develop p
 %{_bindir}/sepolgen
 %{_bindir}/sepolgen-ifgen
 %{_bindir}/sepolgen-ifgen-attr-helper
-%dir  /var/lib/sepolgen
-/var/lib/sepolgen/perm_map
+%dir  %{_sharedstatedir}/sepolgen
+%{_sharedstatedir}/sepolgen/perm_map
 %{_bindir}/sepolicy
 %{_mandir}/man8/sepolgen.8*
 %{_mandir}/ru/man8/sepolgen.8*
@@ -226,6 +242,7 @@ RBAC/MLS policy machines require newrole as a way of changing the role
 or level of a logged in user.
 
 %files newrole
+%license policycoreutils/COPYING
 %attr(0755,root,root) %caps(cap_dac_read_search,cap_setpcap,cap_audit_write,cap_sys_admin,cap_fowner,cap_chown,cap_dac_override=pe) %{_bindir}/newrole
 %{_mandir}/man1/newrole.1.gz
 %{_mandir}/ru/man1/newrole.1.gz
@@ -287,7 +304,6 @@ or level of a logged in user.
 %{_mandir}/ru/man8/semodule_package.8*
 %dir %{_datadir}/bash-completion
 %{_datadir}/bash-completion/completions/setsebool
-%{!?_licensedir:%global license %%doc}
 %license policycoreutils/COPYING
 %doc %{_usr}/share/doc/%{name}
 /usr/share/locale/*
@@ -308,40 +324,38 @@ The policycoreutils-restorecond package contains the restorecond service.
 %{_datadir}/dbus-1/services/org.selinux.Restorecond.service
 %{_mandir}/man8/restorecond.8*
 %{_mandir}/ru/man8/restorecond.8*
-/usr/share/man/ru/man1/audit2why.1.gz
-/usr/share/man/ru/man1/newrole.1.gz
-/usr/share/man/ru/man5/selinux_config.5.gz
-/usr/share/man/ru/man5/sestatus.conf.5.gz
-/usr/share/man/ru/man8/genhomedircon.8.gz
-/usr/share/man/ru/man8/restorecon_xattr.8.gz
-/usr/share/man/ru/man8/semanage-boolean.8.gz
-/usr/share/man/ru/man8/semanage-dontaudit.8.gz
-/usr/share/man/ru/man8/semanage-export.8.gz
-/usr/share/man/ru/man8/semanage-fcontext.8.gz
-/usr/share/man/ru/man8/semanage-ibendport.8.gz
-/usr/share/man/ru/man8/semanage-ibpkey.8.gz
-/usr/share/man/ru/man8/semanage-import.8.gz
-/usr/share/man/ru/man8/semanage-interface.8.gz
-/usr/share/man/ru/man8/semanage-login.8.gz
-/usr/share/man/ru/man8/semanage-module.8.gz
-/usr/share/man/ru/man8/semanage-node.8.gz
-/usr/share/man/ru/man8/semanage-permissive.8.gz
-/usr/share/man/ru/man8/semanage-port.8.gz
-/usr/share/man/ru/man8/semanage-user.8.gz
-/usr/share/man/ru/man8/semodule_unpackage.8.gz
-/usr/share/man/ru/man8/sepolgen.8.gz
-/usr/share/man/ru/man8/sepolicy-booleans.8.gz
-/usr/share/man/ru/man8/sepolicy-communicate.8.gz
-/usr/share/man/ru/man8/sepolicy-generate.8.gz
-/usr/share/man/ru/man8/sepolicy-gui.8.gz
-/usr/share/man/ru/man8/sepolicy-interface.8.gz
-/usr/share/man/ru/man8/sepolicy-manpage.8.gz
-/usr/share/man/ru/man8/sepolicy-network.8.gz
-/usr/share/man/ru/man8/sepolicy-transition.8.gz
-/usr/share/man/ru/man8/sepolicy.8.gz
-
-%{!?_licensedir:%global license %%doc}
-%license policycoreutils/COPYING
+%{_mandir}/ru/man1/audit2why.1*
+%{_mandir}/ru/man1/newrole.1*
+%{_mandir}/ru/man5/selinux_config.5*
+%{_mandir}/ru/man5/sestatus.conf.5*
+%{_mandir}/ru/man8/genhomedircon.8*
+%{_mandir}/ru/man8/restorecon_xattr.8*
+%{_mandir}/ru/man8/semanage-boolean.8*
+%{_mandir}/ru/man8/semanage-dontaudit.8*
+%{_mandir}/ru/man8/semanage-export.8*
+%{_mandir}/ru/man8/semanage-fcontext.8*
+%{_mandir}/ru/man8/semanage-ibendport.8*
+%{_mandir}/ru/man8/semanage-ibpkey.8*
+%{_mandir}/ru/man8/semanage-import.8*
+%{_mandir}/ru/man8/semanage-interface.8*
+%{_mandir}/ru/man8/semanage-login.8*
+%{_mandir}/ru/man8/semanage-module.8*
+%{_mandir}/ru/man8/semanage-node.8*
+%{_mandir}/ru/man8/semanage-permissive.8*
+%{_mandir}/ru/man8/semanage-port.8*
+%{_mandir}/ru/man8/semanage-user.8*
+%{_mandir}/ru/man8/semodule_unpackage.8*
+%{_mandir}/ru/man8/sepolgen.8*
+%{_mandir}/ru/man8/sepolicy-booleans.8*
+%{_mandir}/ru/man8/sepolicy-communicate.8*
+%{_mandir}/ru/man8/sepolicy-generate.8*
+%{_mandir}/ru/man8/sepolicy-gui.8*
+%{_mandir}/ru/man8/sepolicy-interface.8*
+%{_mandir}/ru/man8/sepolicy-manpage.8*
+%{_mandir}/ru/man8/sepolicy-network.8*
+%{_mandir}/ru/man8/sepolicy-transition.8*
+%{_mandir}/ru/man8/sepolicy.8*
+%license restorecond/COPYING
 
 %post
 %systemd_post selinux-autorelabel-mark.service
@@ -360,7 +374,8 @@ The policycoreutils-restorecond package contains the restorecond service.
 
 %changelog
 * Fri Aug 21 2020 Daniel Burgener <daburgen@microsoft.com> 2.9-1
-- Initial import from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Thu Aug 29 2019 Petr Lautrbach <plautrba@redhat.com> - 2.9-5
 - gui: Fix remove module in system-config-selinux (#1740936)

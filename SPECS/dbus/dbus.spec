@@ -33,7 +33,8 @@ It contains the libraries and header files to create applications
             --sysconfdir=%{_sysconfdir}         \
             --localstatedir=%{_var}             \
             --docdir=%{_datadir}/doc/dbus-1.11.12  \
-            --enable-libaudit=no --enable-selinux=yes \
+            --enable-libaudit=no                \
+            --enable-selinux=yes                \
             --with-console-auth-dir=/run/console
 
 make %{?_smp_mflags}

@@ -2,28 +2,31 @@
 %define libselinuxver 2.9-1
 
 %{!?python3_sitelib: %global python3_sitelib %(python3 -c "from distutils.sysconfig import get_python_lib;print(get_python_lib())")}
-Summary: SELinux binary policy manipulation library
-Name: libsemanage
-Version: 2.9
-Release: 3%{?dist}
-License: LGPLv2+
-Source0: https://github.com/SELinuxProject/selinux/releases/download/20190315/libsemanage-2.9.tar.gz
-# fedora-selinux/selinux: git format-patch -N 20190315 -- libsemanage
-# i=1; for j in 00*patch; do printf "Patch%04d: %s\n" $i $j; i=$((i+1));done
-Patch0001: 0001-libsemanage-Fix-RESOURCE_LEAK-and-USE_AFTER_FREE-cov.patch
-URL: https://github.com/SELinuxProject/selinux/wiki
-Source1: semanage.conf
+Summary:      SELinux binary policy manipulation library
+Name:         libsemanage
+Version:      2.9
+Release:      3%{?dist}
+License:      LGPLv2+
+URL:          https://github.com/SELinuxProject/selinux
+Vendor:       Microsoft Corporation
+Distribution: Mariner
+Source0:      %{url}/releases/download/20190315/%{name}-%{version}.tar.gz
+Source1:      semanage.conf
+Patch0001:    0001-libsemanage-Fix-RESOURCE_LEAK-and-USE_AFTER_FREE-cov.patch
 
 BuildRequires: gcc
-BuildRequires: libselinux-devel >= %{libselinuxver} swig
+BuildRequires: libselinux-devel >= %{libselinuxver}
+BuildRequires: swig
 BuildRequires: libsepol-devel >= %{libsepolver}
 BuildRequires: audit-devel
-BuildRequires: bison flex bzip2
-
+BuildRequires: bison
+BuildRequires: flex
+BuildRequires: bzip2
 BuildRequires: python3
 BuildRequires: python3-devel
 
-Requires: bzip2-libs audit-libs
+Requires: bzip2-libs
+Requires: audit-libs
 Requires: libselinux%{?_isa} >= %{libselinuxver}
 
 Provides: libsemanage.so.1
@@ -83,15 +86,11 @@ ln -sf  %{_libdir}/libsemanage.so.1 ${RPM_BUILD_ROOT}/%{_libdir}/libsemanage.so
 
 sed -i '1s%\(#! */usr/bin/python\)\([^3].*\|\)$%\13\2%' %{buildroot}%{_libexecdir}/selinux/semanage_migrate_store
 
-%clean
-rm -rf %{buildroot}
-
 %post -p /sbin/ldconfig
 
 %postun -p /sbin/ldconfig
 
 %files
-%{!?_licensedir:%global license %%doc}
 %license COPYING
 %dir %{_sysconfdir}/selinux
 %config(noreplace) %{_sysconfdir}/selinux/semanage.conf
@@ -117,7 +116,8 @@ rm -rf %{buildroot}
 
 %changelog
 * Tue Aug 25 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
-- Initial import from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Tue Aug 13 2019 Petr Lautrbach <plautrba@redhat.com> - 2.9-3
 - Drop python2-libsemanage (#1738466)

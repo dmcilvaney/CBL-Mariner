@@ -1,15 +1,21 @@
 %define libselinuxver 2.9-1
 %define libsepolver 2.9-1
 
-Summary: SELinux policy compiler
-Name: checkpolicy
-Version: 2.9
-Release: 1%{?dist}
-License: GPLv2
-Source0: https://github.com/SELinuxProject/selinux/releases/download/20190315/checkpolicy-2.9.tar.gz
-Conflicts: selinux-policy-base < 3.13.1-138
+Summary:       SELinux policy compiler
+Name:          checkpolicy
+Version:       2.9
+Release:       1%{?dist}
+License:       GPLv2
+Vendor:        Microsoft Corporation
+Distribution:  Mariner
+Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/%{name}-%{version}.tar.gz
+Conflicts:     selinux-policy-base < 3.13.1-138
 BuildRequires: gcc
-BuildRequires: bison flex flex-devel libsepol-devel >= %{libsepolver} libselinux-devel  >= %{libselinuxver}
+BuildRequires: bison
+BuildRequires: flex
+BuildRequires: flex-devel
+BuildRequires: libsepol-devel >= %{libsepolver}
+BuildRequires: libselinux-devel  >= %{libselinuxver}
 
 %description
 Security-enhanced Linux is a feature of the Linux® kernel and a number
@@ -29,7 +35,6 @@ Only required for building policies.
 %autosetup -p 1 -n checkpolicy-%{version}
 
 %build
-
 %set_build_flags
 
 make clean
@@ -44,7 +49,6 @@ install test/dismod ${RPM_BUILD_ROOT}%{_bindir}/sedismod
 install test/dispol ${RPM_BUILD_ROOT}%{_bindir}/sedispol
 
 %files
-%{!?_licensedir:%global license %%doc}
 %license COPYING
 %{_bindir}/checkpolicy
 %{_bindir}/checkmodule
@@ -57,7 +61,8 @@ install test/dispol ${RPM_BUILD_ROOT}%{_bindir}/sedispol
 
 %changelog
 * Wed Aug 19 2020 Daniel Burgener <Daniel.Burgener@microsoft.com> 2.9-1
-- Initial import from Fedora 31 (license: MIT)
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Wed Jul 24 2019 Fedora Release Engineering <releng@fedoraproject.org> - 2.9-2
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_31_Mass_Rebuild

@@ -44,8 +44,10 @@ sed -i 's@DICTPATH.*@DICTPATH\t/usr/share/cracklib/pw_dict@' \
     etc/login.defs
 
 %build
-%configure --sysconfdir=/etc --with-libpam \
-           --with-libcrack --with-selinux \
+%configure --sysconfdir=/etc \
+           --with-libpam     \
+           --with-libcrack   \
+           --with-selinux    \
            --with-group-name-max-length=32
 make %{?_smp_mflags}
 

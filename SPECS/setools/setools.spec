@@ -6,21 +6,26 @@ Name:           setools
 Version:        4.2.2
 Release:        1%{?setools_pre_ver:.%{setools_pre_ver}}%{?dist}
 Summary:        Policy analysis tools for SELinux
-
-License:        GPLv2
+# binaries are GPL and libraries are LGPL.  See COPYING.
+License:        GPLv2 and LGPLv2+
 URL:            https://github.com/SELinuxProject/setools
+Vendor:         Microsoft Corporation
+Distribution:   Mariner
 Source0:        https://github.com/SELinuxProject/setools/releases/download/%{version}/%{name}-%{version}.tar.bz2
 
-BuildRequires:  flex,  bison
-BuildRequires:  glibc-devel, gcc, git
-BuildRequires:  libsepol-devel >= 2.9-1
-BuildRequires:  qt5-qtbase-devel
-BuildRequires:  swig
-BuildRequires:  python3-Cython
-BuildRequires:  python3-devel
-BuildRequires:  python3-setuptools
-BuildRequires:  python3-xml
-BuildRequires:  libselinux-devel
+BuildRequires: flex
+BuildRequires: bison
+BuildRequires: glibc-devel
+BuildRequires: gcc
+BuildRequires: git
+BuildRequires: libsepol-devel >= 2.9-1
+BuildRequires: qt5-qtbase-devel
+BuildRequires: swig
+BuildRequires: python3-Cython
+BuildRequires: python3-devel
+BuildRequires: python3-setuptools
+BuildRequires: python3-xml
+BuildRequires: libselinux-devel
 
 %description
 SETools is a collection of graphical tools, command-line tools, and
@@ -74,8 +79,10 @@ rm -rf %{buildroot}/%{python3_sitearch}/setoolsgui
 rm -rf %{buildroot}/%{_mandir}/man1/apol*
 
 %files
+%license COPYING COPYING.GPL COPYING.LGPL
 
 %files console
+%license COPYING COPYING.GPL COPYING.LGPL
 %{_bindir}/sediff
 %{_bindir}/seinfo
 %{_bindir}/sesearch
@@ -90,7 +97,8 @@ rm -rf %{buildroot}/%{_mandir}/man1/apol*
 
 %changelog
 * Tue Sep 01 2020 Daniel Burgener <daburgen@microsoft.com> 4.2.2-1
-- Initial import from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Mon Jul 08 2019 Vit Mojzis <vmojzis@redhat.com> - 4.2.2-1}
 - SETools 4.2.2 release

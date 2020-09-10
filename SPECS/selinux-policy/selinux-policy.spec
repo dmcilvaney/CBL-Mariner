@@ -5,29 +5,28 @@
 %define POLICYVER 31
 %define POLICYCOREUTILSVER 2.9
 %define CHECKPOLICYVER 2.9
-Summary: SELinux policy
-Name: selinux-policy
-Version:2.20200818
-Release: 1%{?dist}
-License: GPLv2+
-Source0: https://github.com/SELinuxProject/refpolicy/releases/download/RELEASE_2_20200818/refpolicy-%{version}.tar.bz2
-Source1: Makefile.devel
-Url: https://github.com/SELinuxProject/refpolicy
-BuildArch: noarch
+Summary:      SELinux policy
+Name:         selinux-policy
+Version:      2.20200818
+Release:      1%{?dist}
+License:      GPLv2
+Vendor:       Microsoft Corporation
+Distribution: Mariner
+Url:          https://github.com/SELinuxProject/refpolicy
+Source0:      %{url}/releases/download/RELEASE_2_20200818/refpolicy-%{version}.tar.bz2
+Source1:      Makefile.devel
+BuildArch:    noarch
+
 BuildRequires: python3 checkpolicy >= %{CHECKPOLICYVER} m4 policycoreutils-devel >= %{POLICYCOREUTILSVER} bzip2
-#BuildRequires: gcc
 BuildRequires: python3-xml
 Requires(pre): policycoreutils >= %{POLICYCOREUTILSVER}
 Requires(pre): coreutils
-# TODO: Do we need below?
-Conflicts:  audispd-plugins <= 1.7.7-1
 
 %description
 SELinux policy describes security properties of system components, to be
 enforced by the kernel when running with SELinux enabled.
 
 %files
-%{!?_licensedir:%global license %%doc}
 %license COPYING
 %dir %{_usr}/share/selinux
 %dir %{_usr}/share/selinux/packages
@@ -70,8 +69,7 @@ enforced by the kernel when running with SELinux enabled.
 %ghost %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.local.bin
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.subs
 %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.subs_dist
-%config %{_sysconfdir}/selinux/refpolicy/contexts/files/media
-%dir %{_sysconfdir}/selinux/refpolicy/contexts/users
+%config %{_sysconfdir}/selinux/refpolicy/contexts/files/media %dir %{_sysconfdir}/selinux/refpolicy/contexts/users
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/root
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/guest_u
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/xguest_u
@@ -264,7 +262,8 @@ exit 0
 
 %changelog
 * Mon Aug 31 2020 Daniel Burgener <daburgen@microsoft.com> 2.20200818-1
-- Initial creation for Mariner.  Loosely based on spec from Fedora 31
+- Initial CBL-Mariner import from Fedora 31 (license: MIT)
+- License verified
 
 * Wed Oct 09 2019 Lukas Vrabec <lvrabec@redhat.com> - 3.14.4-37
 - Remove duplicate file context for /usr//bin/nova-api-metadata
