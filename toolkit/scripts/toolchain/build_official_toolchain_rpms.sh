@@ -234,7 +234,6 @@ build_rpm_in_chroot_no_install m4
 build_rpm_in_chroot_no_install libdb
 build_rpm_in_chroot_no_install libcap
 build_rpm_in_chroot_no_install popt
-build_rpm_in_chroot_no_install util-linux
 build_rpm_in_chroot_no_install findutils
 build_rpm_in_chroot_no_install tar
 build_rpm_in_chroot_no_install gawk
@@ -316,7 +315,6 @@ chroot_and_install_rpms python2
 build_rpm_in_chroot_no_install lua
 chroot_and_install_rpms lua
 
-build_rpm_in_chroot_no_install rpm
 build_rpm_in_chroot_no_install cpio
 
 # Build tdnf-2.1.0
@@ -364,10 +362,6 @@ build_rpm_in_chroot_no_install libxslt
 # docbook-style-xsl needs pam
 chroot_and_install_rpms pam
 build_rpm_in_chroot_no_install docbook-style-xsl
-
-# shadow-utils needs the pam.d sources in the root of SOURCES_DIR
-cp $SPECROOT/shadow-utils/pam.d/* $CHROOT_SOURCES_DIR
-build_rpm_in_chroot_no_install shadow-utils
 
 # gtest needs cmake
 chroot_and_install_rpms cmake
@@ -448,6 +442,15 @@ build_rpm_in_chroot_no_install libsepol
 # libselinux requires libsepol
 chroot_and_install_rpms libsepol
 build_rpm_in_chroot_no_install libselinux
+
+# util-linux, rpm and shadow-utils require libselinux
+chroot_and_install_rpms libselinux
+build_rpm_in_chroot_no_install util-linux
+build_rpm_in_chroot_no_install rpm
+
+# shadow-utils needs the pam.d sources in the root of SOURCES_DIR
+cp $SPECROOT/shadow-utils/pam.d/* $CHROOT_SOURCES_DIR
+build_rpm_in_chroot_no_install shadow-utils
 
 # systemd-bootstrap requires libcap, xz, kbd, kmod, util-linux, meson, shadow-utils
 chroot_and_install_rpms libcap
