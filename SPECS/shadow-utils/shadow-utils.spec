@@ -146,7 +146,7 @@ make %{?_smp_mflags} check
 %changelog
 *   Fri Aug 28 2020 Daniel Burgener <daburgen@microsoft.com> 4.6-9
 -   Add SELinux support
-*   Sat May 09 00:20:53 PST 2020 Nick Samson <nisamson@microsoft.com> - 4.6-8
+*   Sat May 09 2020 Nick Samson <nisamson@microsoft.com> - 4.6-8
 -   Added %%license line automatically
 *   Tue Apr 28 2020 Emre Girgin <mrgirgin@microsoft.com> 4.6-7
 -   Renaming Linux-PAM to pam
