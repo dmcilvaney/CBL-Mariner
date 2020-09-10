@@ -2,7 +2,7 @@
 
 Name:           secilc
 Version:        2.9
-Release:        1%{?dist}
+Release:        3%{?dist}
 Summary:        The SELinux CIL Compiler
 License:        BSD
 URL:            https://github.com/SELinuxProject/selinux
@@ -45,7 +45,7 @@ make %{?_smp_mflags} DESTDIR="%{buildroot}" SBINDIR="%{buildroot}%{_sbindir}" LI
 %license COPYING
 
 %changelog
-* Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
+* Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-3
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 

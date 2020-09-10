@@ -69,7 +69,8 @@ enforced by the kernel when running with SELinux enabled.
 %ghost %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.local.bin
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.subs
 %{_sysconfdir}/selinux/refpolicy/contexts/files/file_contexts.subs_dist
-%config %{_sysconfdir}/selinux/refpolicy/contexts/files/media %dir %{_sysconfdir}/selinux/refpolicy/contexts/users
+%config %{_sysconfdir}/selinux/refpolicy/contexts/files/media
+%dir %{_sysconfdir}/selinux/refpolicy/contexts/users
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/root
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/guest_u
 %config(noreplace) %{_sysconfdir}/selinux/refpolicy/contexts/users/xguest_u

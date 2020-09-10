@@ -13,15 +13,15 @@
 Summary:       SELinux policy core utilities
 Name:          policycoreutils
 Version:       2.9
-Release:       1%{?dist}
+Release:       6%{?dist}
 License:       GPLv2
 URL:           https://github.com/SELinuxProject/selinux
 Vendor:        Microsoft Corporation
 Distribution:  Mariner
-Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/policycoreutils-2.9.tar.gz
-Source1:       https://github.com/SELinuxProject/selinux/releases/download/20190315/selinux-python-2.9.tar.gz
-Source2:       https://github.com/SELinuxProject/selinux/releases/download/20190315/semodule-utils-2.9.tar.gz
-Source3:       https://github.com/SELinuxProject/selinux/releases/download/20190315/restorecond-2.9.tar.gz
+Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/%{name}-%{version}.tar.gz
+Source1:       https://github.com/SELinuxProject/selinux/releases/download/20190315/selinux-python-%{version}.tar.gz
+Source2:       https://github.com/SELinuxProject/selinux/releases/download/20190315/semodule-utils-%{version}.tar.gz
+Source3:       https://github.com/SELinuxProject/selinux/releases/download/20190315/restorecond-%{version}.tar.gz
 Source5:       selinux-autorelabel
 Source6:       selinux-autorelabel.service
 Source7:       selinux-autorelabel-mark.service
@@ -373,7 +373,7 @@ The policycoreutils-restorecond package contains the restorecond service.
 %systemd_postun_with_restart restorecond.service
 
 %changelog
-* Fri Aug 21 2020 Daniel Burgener <daburgen@microsoft.com> 2.9-1
+* Fri Aug 21 2020 Daniel Burgener <daburgen@microsoft.com> 2.9-6
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 

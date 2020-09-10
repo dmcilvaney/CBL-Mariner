@@ -1,12 +1,12 @@
 Summary:       SELinux Translation Daemon
 Name:          mcstrans
 Version:       2.9
-Release:       1%{?dist}
+Release:       3%{?dist}
 License:       GPLv2+
-Url:           https://github.com/SELinuxProject/selinux/wiki
+Url:           https://github.com/SELinuxProject/selinux
 Vendor:        Microsoft Corporation
 Distribution:  Mariner
-Source0:       https://github.com/SELinuxProject/selinux/releases/download/20190315/mcstrans-2.9.tar.gz
+Source0:       %{url}/releases/download/20190315/%{name}-%{version}.tar.gz
 Source1:       secolor.conf.8
 BuildRequires: gcc
 BuildRequires: libselinux-devel >= %{version}
@@ -89,7 +89,7 @@ install -m644 %{SOURCE1} %{buildroot}%{_mandir}/man8/
 %{_usr}/share/mcstrans/util/*
 
 %changelog
-* Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
+* Thu Aug 27 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-3
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 

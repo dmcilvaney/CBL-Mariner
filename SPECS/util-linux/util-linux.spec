@@ -105,7 +105,7 @@ rm -rf %{buildroot}/lib/systemd/system
 %changelog
 *   Fri Sep 04 2020 Daniel Burgener <daburgen@microsoft.com> 2.32.1-4
 -   Enable SELinux support
-*   Sat May 09 2020 Nick Samson <nisamson@microsoft.com>
+*   Sat May 09 2020 Nick Samson <nisamson@microsoft.com> 2.32.1-3
 -   Added %%license line automatically
 *   Tue Apr 14 2020 Emre Girgin <mrgirgin@microsoft.com> 2.32.1-2
 -   Rename ncurses-terminfo to ncurses-term.

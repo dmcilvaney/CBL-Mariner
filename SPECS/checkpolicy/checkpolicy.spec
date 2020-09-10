@@ -4,7 +4,7 @@
 Summary:       SELinux policy compiler
 Name:          checkpolicy
 Version:       2.9
-Release:       1%{?dist}
+Release:       3%{?dist}
 License:       GPLv2
 Vendor:        Microsoft Corporation
 Distribution:  Mariner
@@ -60,7 +60,7 @@ install test/dispol ${RPM_BUILD_ROOT}%{_bindir}/sedispol
 %{_bindir}/sedispol
 
 %changelog
-* Wed Aug 19 2020 Daniel Burgener <Daniel.Burgener@microsoft.com> 2.9-1
+* Wed Aug 19 2020 Daniel Burgener <Daniel.Burgener@microsoft.com> 2.9-3
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 

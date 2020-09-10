@@ -5,7 +5,7 @@
 Summary:      SELinux binary policy manipulation library
 Name:         libsemanage
 Version:      2.9
-Release:      3%{?dist}
+Release:      4%{?dist}
 License:      LGPLv2+
 URL:          https://github.com/SELinuxProject/selinux
 Vendor:       Microsoft Corporation
@@ -115,7 +115,7 @@ sed -i '1s%\(#! */usr/bin/python\)\([^3].*\|\)$%\13\2%' %{buildroot}%{_libexecdi
 %{_libexecdir}/selinux/semanage_migrate_store
 
 %changelog
-* Tue Aug 25 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-1
+* Tue Aug 25 2020 Daniel Burgener <daburgen@microsoft.com> - 2.9-4
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 

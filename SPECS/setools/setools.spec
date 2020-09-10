@@ -4,7 +4,7 @@
 
 Name:           setools
 Version:        4.2.2
-Release:        1%{?setools_pre_ver:.%{setools_pre_ver}}%{?dist}
+Release:        2%{?setools_pre_ver:.%{setools_pre_ver}}%{?dist}
 Summary:        Policy analysis tools for SELinux
 # binaries are GPL and libraries are LGPL.  See COPYING.
 License:        GPLv2 and LGPLv2+
@@ -96,11 +96,11 @@ rm -rf %{buildroot}/%{_mandir}/man1/apol*
 %{python3_sitearch}/setools-*
 
 %changelog
-* Tue Sep 01 2020 Daniel Burgener <daburgen@microsoft.com> 4.2.2-1
+* Tue Sep 01 2020 Daniel Burgener <daburgen@microsoft.com> 4.2.2-2
 - Initial CBL-Mariner import from Fedora 31 (license: MIT)
 - License verified
 
-* Mon Jul 08 2019 Vit Mojzis <vmojzis@redhat.com> - 4.2.2-1}
+* Mon Jul 08 2019 Vit Mojzis <vmojzis@redhat.com> - 4.2.2-1
 - SETools 4.2.2 release
 
 * Mon May 13 2019 Vit Mojzis <vmojzis@redhat.com> - 4.2.1-3
