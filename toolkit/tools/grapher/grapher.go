@@ -320,6 +320,15 @@ func fixCycle(g *pkggraph.PkgGraph, cycle []*pkggraph.PkgNode) (err error) {
 
 // validateGraph makes sure the graph is a directed acyclic graph (DAG)
 func validateGraph(g *pkggraph.PkgGraph) (err error) {
+	// Quickly search for a cycle using a simple BFS
+	quickCycle, err := g.FindAnyDirectedCycle()
+	if len(quickCycle) > 0 {
+		logger.Log.Debug("Found cycle using simple BFS search:")
+		for _, cycleNode := range quickCycle {
+			logger.Log.Debugf("\t%s", cycleNode.FriendlyName())
+		}
+	}
+
 	cycles := topo.DirectedCyclesIn(g)
 
 	// Try to fix the cycles if we can before reporting them
