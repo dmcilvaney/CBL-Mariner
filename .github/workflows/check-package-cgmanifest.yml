@@ -21,6 +21,11 @@ jobs:
         echo "${{ github }}"
         echo "----------"
         echo "${{ github.event }}"
+        echo "----------"
+        echo "${{ github.event.pull_request }}"
+        echo "----------"
+        echo "${{ github.event.push }}"
+        cat workflow/event.json
 
     - name: Get base commit for PRs
       if: ${{ github.event.pull_request }}
