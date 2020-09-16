@@ -3,7 +3,7 @@ name: Check Package CGManifests
 on:
   push:
     branches: [ main, dev, 1.0*]
-  pull_request_target:
+  pull_request:
     branches: [ main, dev, 1.0*]
 
 jobs:
@@ -24,7 +24,7 @@ jobs:
         echo "Im in 1.0!"
 
     - name: Get base commit for PRs
-      if: ${{ github.event_name == 'pull_request_target' }}
+      if: ${{ github.event_name == 'pull_request' }}
       run: |
         git fetch origin ${{ github.base_ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }})"
