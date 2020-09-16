@@ -20,7 +20,7 @@ jobs:
       env:
         C2: ${{ toJson(github.event) }}
       run: |
-        echo "$C2""
+        echo "$C2"
 
     - name: Get base commit for PRs
       if: ${{ github.event.pull_request }}
