@@ -16,6 +16,12 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v2
 
+    - name: Dump stuff
+      run: |
+        echo "${{ github }}"
+        echo "----------"
+        echo "${{ github.event }}"
+
     - name: Get base commit for PRs
       if: ${{ github.event.pull_request }}
       run: |
@@ -34,7 +40,7 @@ jobs:
 
     - name: Get the changed files
       run: |
-        echo "Files changed: '$(git diff-tree --no-commit-id --name-only -r ${{ env.base_sha }} ${{ github.sha }})''"
+        echo "Files changed: '$(git diff-tree --no-commit-id --name-only -r ${{ env.base_sha }} ${{ github.sha }})'"
         echo "::set-env name=updated-specs::$(git diff-tree --no-commit-id --name-only -r ${{ env.base_sha }} ${{ github.sha }} | grep "\.spec$")"
         echo "Files to validate: '${{ env.updated-specs }}'"
 
