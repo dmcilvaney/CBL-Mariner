@@ -18,12 +18,12 @@ jobs:
 
     - name: Dump stuff
       env:
-        C2: ${{ toJson(github.event) }}
+        C2: ${{ toJson(github) }}
       run: |
         echo "$C2"
 
     - name: Get base commit for PRs
-      if: ${{ github.event.pull_request }}
+      if: ${{ github.event_name == 'pull_request' }}
       run: |
         git fetch origin ${{ github.base_ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }})"
@@ -31,7 +31,7 @@ jobs:
         echo "What about ${{ github.head_ref }}?"
 
     - name: Get base commit for Pushes
-      if: ${{ github.event.push }}
+      if: ${{ github.event_name == 'push' }}
       run: |
         git fetch origin ${{ github.ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }}~1)"
