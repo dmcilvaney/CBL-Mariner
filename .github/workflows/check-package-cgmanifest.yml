@@ -28,15 +28,13 @@ jobs:
         git fetch origin ${{ github.base_ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }})"
         echo "Merging ${{ github.sha }} into ${{ github.base_ref }}"
-        echo "What about ${{ github.head_ref }}?"
 
     - name: Get base commit for Pushes
       if: ${{ github.event_name == 'push' }}
       run: |
         git fetch origin ${{ github.ref }}
-        echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }}~1)"
+        echo "::set-env name=base_sha::${{ github.event.after }}"
         echo "Merging ${{ github.sha }} into ${{ env.base_sha }}"
-        echo "What about ${{ github.head_ref }}?"
 
     - name: Get the changed files
       run: |
