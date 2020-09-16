@@ -40,7 +40,7 @@ jobs:
       run: |
         echo "Files changed: '$(git diff-tree --no-commit-id --name-only -r ${{ env.base_sha }} ${{ github.sha }})'"
         changed_specs=$(git diff-tree --no-commit-id --name-only -r ${{ env.base_sha }} ${{ github.sha }} | grep "\.spec$")
-        echo "Files to validate: '${{ env.updated-specs }}'"
+        echo "Files to validate: '${changed_specs}'"
         echo "::set-env name=updated-specs::${changed_specs}"
 
     - name: Check each spec
