@@ -17,15 +17,10 @@ jobs:
       uses: actions/checkout@v2
 
     - name: Dump stuff
+      env:
+        C2: ${{ toJson(github.event) }}
       run: |
-        echo "${{ toJson(github) }}"
-        echo "----------"
-        echo "${{ toJson(github.event) }}"
-        echo "----------"
-        echo "${{ toJson(github.event.pull_request) }}"
-        echo "----------"
-        echo "${{ toJson(github.event.push) }}"
-        echo "----------"
+        echo "$C2""
 
     - name: Get base commit for PRs
       if: ${{ github.event.pull_request }}
