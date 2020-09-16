@@ -18,12 +18,13 @@ jobs:
 
     - name: Dump stuff
       env:
-        C2: ${{ toJson(github) }}
+        dump: ${{ toJson(github) }}
       run: |
-        echo "$C2"
+        echo "$dump"
+        echo "Im in 1.0!"
 
     - name: Get base commit for PRs
-      if: ${{ github.event_name == 'pull_request' }}
+      if: ${{ github.event_name == 'pull_request_target' }}
       run: |
         git fetch origin ${{ github.base_ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }})"
