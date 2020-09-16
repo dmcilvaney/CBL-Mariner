@@ -2,9 +2,9 @@ name: Check Package CGManifests
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, dev, 1.0*]
   pull_request:
-    branches: [ main ]
+    branches: [ main, dev, 1.0*]
 
 jobs:
 
@@ -16,11 +16,21 @@ jobs:
     - name: Check out code
       uses: actions/checkout@v2
 
-    - name: Get base commit
+    - name: Get base commit for PRs
+      if: ${{ github.event.pull_request }}
       run: |
         git fetch origin ${{ github.base_ref }}
         echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }})"
         echo "Merging ${{ github.sha }} into ${{ github.base_ref }}"
+        echo "What about ${{ github.head_ref }}?"
+
+    - name: Get base commit for Pushes
+      if: ${{ github.event.push }}
+      run: |
+        git fetch origin ${{ github.ref }}
+        echo "::set-env name=base_sha::$(git rev-parse origin/${{ github.base_ref }}~1)"
+        echo "Merging ${{ github.sha }} into ${{ env.base_sha }}"
+        echo "What about ${{ github.head_ref }}?"
 
     - name: Get the changed files
       run: |
