@@ -6,9 +6,6 @@ on:
   pull_request_target:
     branches: [ main, dev, 1.0*]
 
-
-
-
 jobs:
 
   build:
