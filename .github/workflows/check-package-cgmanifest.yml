@@ -33,8 +33,8 @@ jobs:
       if: ${{ github.event_name == 'push' }}
       run: |
         git fetch origin ${{ github.ref }}
-        echo "::set-env name=base_sha::${{ github.event.after }}"
-        echo "Merging ${{ github.sha }} into ${{ env.base_sha }}"
+        echo "::set-env name=base_sha::${{ github.event.before }}"
+        echo "Merging ${{ github.sha }} into ${{ github.event.before }}"
 
     - name: Get the changed files
       run: |
