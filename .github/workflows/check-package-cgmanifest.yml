@@ -18,14 +18,14 @@ jobs:
 
     - name: Dump stuff
       run: |
-        echo "${{ github }}"
+        echo "${{ toJson(github) }}"
         echo "----------"
-        echo "${{ github.event }}"
+        echo "${{ toJson(github.event) }}"
         echo "----------"
-        echo "${{ github.event.pull_request }}"
+        echo "${{ toJson(github.event.pull_request) }}"
         echo "----------"
-        echo "${{ github.event.push }}"
-        cat workflow/event.json
+        echo "${{ toJson(github.event.push) }}"
+        echo "----------"
 
     - name: Get base commit for PRs
       if: ${{ github.event.pull_request }}
