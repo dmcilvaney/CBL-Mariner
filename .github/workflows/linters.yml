@@ -1,0 +1,90 @@
+name: Linters
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  lint_go:
+    name: Lint Go
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - name: Run golangci-lint
+      uses: golangci/golangci-lint-action@v2
+      with:
+        working-directory: ./toolkit/tools
+        args: -E dupl -E exhaustive -E gosec -E gocyclo -E gofmt -E misspell -E unparam -E scopelint -E gocritic -E godox -E whitespace -E testpackage -E nestif -E exhaustive 
+
+  lint_md:
+    name: Lint Markdown
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - name: Super-Linter
+      uses: github/super-linter@v3
+      env:
+        VALIDATE_MD: true
+        FILTER_REGEX_EXCLUDE: .*SPECS.*
+                
+  lint_bash:
+    name: Lint Bash
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - run: rm -r ./SPECS*
+    - name: Super-Linter
+      uses: github/super-linter@v3
+      env:
+        VALIDATE_BASH: true
+        FILTER_REGEX_EXCLUDE: .*SPECS.*
+
+  lint_docker:
+    name: Lint Docker
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - run: rm -r ./SPECS*
+    - name: Super-Linter
+      uses: github/super-linter@v3
+      env:
+        VALIDATE_DOCKERFILE: true
+        VALIDATE_DOCKERFILE_HADOLINT: true
+        FILTER_REGEX_EXCLUDE: .*SPECS.*
+        
+  lint_json:
+    name: Lint JSON
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - run: rm -r ./SPECS*
+    - name: Super-Linter
+      uses: github/super-linter@v3
+      env:
+        VALIDATE_JSON: true
+        FILTER_REGEX_EXCLUDE: .*SPECS.*
+        
+  lint_others:
+    name: Lint Others
+    runs-on: ubuntu-18.04
+    steps:
+    - name: Checkout Code
+      uses: actions/checkout@v2
+    - run: rm -r ./SPECS*
+    - name: Super-Linter
+      uses: github/super-linter@v3
+      env:
+        FILTER_REGEX_EXCLUDE: .*SPECS.*
+        VALIDATE_BASH: false
+        VALIDATE_DOCKERFILE: false
+        VALIDATE_DOCKERFILE_HADOLINT: false
+        VALIDATE_GO: false
+        VALIDATE_JSON: false
+        VALIDATE_MD: false
