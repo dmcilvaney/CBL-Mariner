@@ -2,7 +2,7 @@
     "Disks": [
         {
             "PartitionTableType": "gpt",
-            "MaxSize": 11264,
+            "MaxSize": 3000,
             "Artifacts": [
                 {
                     "Name": "core",
@@ -11,7 +11,7 @@
             ],
             "Partitions": [
                 {
-                    "ID": "boot",
+                    "ID": "efi",
                     "Flags": [
                         "esp",
                         "boot"
@@ -21,8 +21,14 @@
                     "FsType": "fat32"
                 },
                 {
-                    "ID": "rootfs",
+                    "ID": "boot",
                     "Start": 9,
+                    "End": 200,
+                    "FsType": "ext4"
+                },
+                {
+                    "ID": "rootfs",
+                    "Start": 200,
                     "End": 0,
                     "FsType": "ext4"
                 }
@@ -36,6 +42,10 @@
             "PartitionSettings": [
                 {
                     "ID": "boot",
+                    "MountPoint": "/boot"
+                },
+                {
+                    "ID": "efi",
                     "MountPoint": "/boot/efi",
                     "MountOptions" : "umask=0077"
                 },
@@ -51,6 +61,13 @@
             ],
             "KernelOptions": {
                 "default": "kernel"
+                
+            },
+            "ReadOnlyVerityRoot": {
+                "Enable": true
+            },
+            "KernelCommandLine": {
+                "ExtraCommandLine": "console=tty0 console=ttyS0=9800 rd.shell rd.debug"
             },
             "Hostname": "cbl-mariner"
         }

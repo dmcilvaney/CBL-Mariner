@@ -1,0 +1,8 @@
+[Unit]
+Description=CPU Slowdown
+
+[Service]
+ExecStart=/usr/local/bin/cpu_slow.sh
+
+[Install]
+WantedBy=multi-user.target

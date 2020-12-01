@@ -171,6 +171,9 @@
             "Encryption" : {
                 "Enable":   true,
                 "Password": "EncryptPassphrase123"
+            },
+            "ReadOnlyVerityRoot": {
+                "Enable": false
             }
         },
         {

@@ -99,6 +99,8 @@ func TestShouldSucceedParsingMissingDefaultKernelForRootfs_SystemConfig(t *testi
 	rootfsNoKernelConfig := validSystemConfig
 	rootfsNoKernelConfig.KernelOptions = map[string]string{}
 	rootfsNoKernelConfig.PartitionSettings = []PartitionSetting{}
+	// We can't support a verity root without a root mount.
+	rootfsNoKernelConfig.ReadOnlyVerityRoot.Enable = false
 
 	assert.NoError(t, rootfsNoKernelConfig.IsValid())
 	err := remarshalJSON(rootfsNoKernelConfig, &checkedSystemConfig)
@@ -119,6 +121,101 @@ func TestShouldFailParsingBadKernelCommandLine_SystemConfig(t *testing.T) {
 	err = remarshalJSON(badKernelCommandConfig, &checkedSystemConfig)
 	assert.Error(t, err)
 	assert.Equal(t, "failed to parse [SystemConfig]: failed to parse [KernelCommandLine]: ExtraCommandLine contains character ` which is reserved for use by sed", err.Error())
+}
+
+func TestShouldFailToParsingMultipleSameMounts_SystemConfig(t *testing.T) {
+	var checkedSystemConfig SystemConfig
+
+	badPartitionSettingsConfig := validSystemConfig
+	badPartitionSettingsConfig.PartitionSettings = []PartitionSetting{
+		{MountPoint: "/"},
+		{MountPoint: "/"},
+	}
+
+	err := badPartitionSettingsConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [PartitionSettings]: duplicate mount point found at '/'", err.Error())
+
+	err = remarshalJSON(badPartitionSettingsConfig, &checkedSystemConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [SystemConfig]: invalid [PartitionSettings]: duplicate mount point found at '/'", err.Error())
+}
+
+func TestShouldFailParsingBothVerityAndEncryption_SystemConfig(t *testing.T) {
+	var checkedSystemConfig SystemConfig
+
+	badBothEncryptionVerityConfig := validSystemConfig
+	badBothEncryptionVerityConfig.ReadOnlyVerityRoot = validSystemConfig.ReadOnlyVerityRoot
+	badBothEncryptionVerityConfig.ReadOnlyVerityRoot.Enable = true
+
+	err := badBothEncryptionVerityConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [ReadOnlyVerityRoot]: verity root currently does not support root encryption", err.Error())
+
+	err = remarshalJSON(badBothEncryptionVerityConfig, &checkedSystemConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [SystemConfig]: invalid [ReadOnlyVerityRoot]: verity root currently does not support root encryption", err.Error())
+}
+
+func TestShouldFailParsingInvalidVerityRoot_SystemConfig(t *testing.T) {
+	var checkedSystemConfig SystemConfig
+
+	badPartitionSettingsConfig := validSystemConfig
+	badPartitionSettingsConfig.ReadOnlyVerityRoot = ReadOnlyVerityRoot{
+		Enable:        true,
+		Name:          "test",
+		TmpfsOverlays: []string{"/nested", "/nested/folder"},
+	}
+	// Encryption and Verity currently can't coexist
+	badPartitionSettingsConfig.Encryption.Enable = false
+
+	err := badPartitionSettingsConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [ReadOnlyVerityRoot]: failed to validate [TmpfsOverlays], overlays may not overlap each other (/nested)(/nested/folder)", err.Error())
+
+	err = remarshalJSON(badPartitionSettingsConfig, &checkedSystemConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [SystemConfig]: failed to parse [ReadOnlyVerityRoot]: failed to validate [TmpfsOverlays], overlays may not overlap each other (/nested)(/nested/folder)", err.Error())
+}
+
+func TestShouldFailParsingVerityRootWithNoRoot_SystemConfig(t *testing.T) {
+	var checkedSystemConfig SystemConfig
+
+	badPartitionSettingsConfig := validSystemConfig
+	// Take only the boot partition (index 0), drop the root (index 1)
+	badPartitionSettingsConfig.PartitionSettings = validSystemConfig.PartitionSettings[0:1]
+	badPartitionSettingsConfig.ReadOnlyVerityRoot = ReadOnlyVerityRoot{
+		Enable: true,
+		Name:   "test",
+	}
+
+	err := badPartitionSettingsConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [ReadOnlyVerityRoot]: must have a partition mounted at '/'", err.Error())
+
+	err = remarshalJSON(badPartitionSettingsConfig, &checkedSystemConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [SystemConfig]: invalid [ReadOnlyVerityRoot]: must have a partition mounted at '/'", err.Error())
+}
+
+func TestShouldFailParsingVerityRootWithNoBoot_SystemConfig(t *testing.T) {
+	var checkedSystemConfig SystemConfig
+
+	badPartitionSettingsConfig := validSystemConfig
+	// Take only the boot partition (index 0), drop the root (index 1)
+	badPartitionSettingsConfig.PartitionSettings = validSystemConfig.PartitionSettings[1:2]
+	badPartitionSettingsConfig.ReadOnlyVerityRoot = ReadOnlyVerityRoot{
+		Enable: true,
+		Name:   "test",
+	}
+
+	err := badPartitionSettingsConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [ReadOnlyVerityRoot]: must have a separate partition mounted at '/boot'", err.Error())
+
+	err = remarshalJSON(badPartitionSettingsConfig, &checkedSystemConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [SystemConfig]: invalid [ReadOnlyVerityRoot]: must have a separate partition mounted at '/boot'", err.Error())
 }
 
 func TestShouldFailToParseInvalidJSON_SystemConfig(t *testing.T) {

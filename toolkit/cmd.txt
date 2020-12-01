@@ -1,0 +1,1 @@
+sudo make image  CA_CERT=~/mycerts/rootca.crt TLS_CERT=~/mycerts/mariner_user.crt TLS_KEY=~/mycerts/mariner_user.key   SRPM_FILE_SIGNATURE_HANDLING=update -j10  SPECS_DIR=../TEMPSPEC REBUILD_TOOLS=y LOG_LEVEL=trace

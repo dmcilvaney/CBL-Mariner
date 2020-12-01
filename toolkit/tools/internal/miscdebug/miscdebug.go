@@ -1,0 +1,28 @@
+// Copyright (c) Microsoft Corporation.
+// Licensed under the MIT License.
+
+package miscdebug
+
+import (
+	"time"
+
+	"microsoft.com/pkggen/internal/logger"
+)
+
+func ic(i *int) {
+	*i++
+}
+
+//WaitForDebugger busy loops until manually broken out of.
+func WaitForDebugger(tag string) {
+	i := 1
+	logger.Log.Errorf("Freezing at %s for debugger", tag)
+	logger.Log.Errorf("Use 'break ic', then 'c' to jump to the busy loop")
+
+	for i != 0 {
+		logger.Log.Errorf("Waiting for debugger %d, once broken in run `so` to step out, `set i=0`, then `c`", i)
+		ic(&i)
+		time.Sleep(time.Second)
+	}
+
+}

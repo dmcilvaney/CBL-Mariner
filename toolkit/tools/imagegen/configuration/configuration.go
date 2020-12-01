@@ -54,14 +54,6 @@ type TargetDisk struct {
 	Value string `json:"Value"`
 }
 
-// PartitionSetting holds the mounting information for each partition.
-type PartitionSetting struct {
-	RemoveDocs   bool   `json:"RemoveDocs"`
-	ID           string `json:"ID"`
-	MountOptions string `json:"MountOptions"`
-	MountPoint   string `json:"MountPoint"`
-}
-
 // PostInstallScript defines a script to be ran after other installation
 // steps are finished and provides a way to pass parameters to it.
 type PostInstallScript struct {

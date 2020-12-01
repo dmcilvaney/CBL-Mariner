@@ -228,7 +228,7 @@ func DetachLoopbackDevice(diskDevPath string) (err error) {
 }
 
 // CreatePartitions creates partitions on the specified disk according to the disk config
-func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryption configuration.RootEncryption) (partDevPathMap map[string]string, partIDToFsTypeMap map[string]string, encryptedRoot EncryptedRootDevice, err error) {
+func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot) (partDevPathMap map[string]string, partIDToFsTypeMap map[string]string, encryptedRoot EncryptedRootDevice, readOnlyRoot VerityDevice, err error) {
 	const (
 		rootFsID = "rootfs"
 	)
@@ -256,18 +256,29 @@ func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryptio
 		partDevPath, err := CreateSinglePartition(diskDevPath, partitionNumber, partitionTableType.String(), partition)
 		if err != nil {
 			logger.Log.Warnf("Failed to create single partition")
-			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, err
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 		}
 
 		partFsType, err := FormatSinglePartition(partDevPath, partition)
 		if err != nil {
 			logger.Log.Warnf("Failed to format partition")
-			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, err
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 		}
 
 		if rootEncryption.Enable && partition.ID == rootFsID {
 			encryptedRoot, err = encryptRootPartition(partDevPath, partition, rootEncryption)
+			if err != nil {
+				logger.Log.Warnf("Failed to initialize encrypted root")
+				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+			}
 			partDevPathMap[partition.ID] = GetEncryptedRootVolMapping()
+		} else if readOnlyRootConfig.Enable && partition.ID == rootFsID {
+			readOnlyRoot, err = PrepReadOnlyDevice(partDevPath, partition, readOnlyRootConfig)
+			if err != nil {
+				logger.Log.Warnf("Failed to initialize read only root")
+				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+			}
+			partDevPathMap[partition.ID] = readOnlyRoot.MappedDevice
 		} else {
 			partDevPathMap[partition.ID] = partDevPath
 		}

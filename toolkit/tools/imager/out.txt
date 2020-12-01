@@ -1,0 +1,400 @@
+[37mDEBU[0m[0000] Reading config file from '/home/damcilva/repos/CBL-Mariner/toolkit/imageconfigs/core-efi.json'. 
+[37mTRAC[0m[0000] Read 0x653 bytes of JSON data.               
+[36mINFO[0m[0000] Building system configuration (Standard)     
+[37mTRAC[0m[0000] Processing packages from packagelist /home/damcilva/repos/CBL-Mariner/toolkit/imageconfigs/packagelists/hyperv-packages.json 
+[37mTRAC[0m[0000] Read 0x35 bytes of JSON data.                
+[37mTRAC[0m[0000] packages {[hyperv-daemons]}                  
+[37mTRAC[0m[0000] Processing packages from packagelist /home/damcilva/repos/CBL-Mariner/toolkit/imageconfigs/packagelists/core-packages-image.json 
+[37mTRAC[0m[0000] Read 0x148 bytes of JSON data.               
+[37mTRAC[0m[0000] packages {[shim-unsigned grub2-efi-binary ca-certificates core-packages-base-image initramfs verity-readonly-root]} 
+[37mTRAC[0m[0000] Processing packages from packagelist /home/damcilva/repos/CBL-Mariner/toolkit/imageconfigs/packagelists/cloud-init-packages.json 
+[37mTRAC[0m[0000] Read 0x31 bytes of JSON data.                
+[37mTRAC[0m[0000] packages {[cloud-init]}                      
+[37mTRAC[0m[0000] finalPkgList = [hyperv-daemons shim-unsigned grub2-efi-binary ca-certificates core-packages-base-image initramfs verity-readonly-root cloud-init] 
+[36mINFO[0m[0000] Creating raw disk in build directory         
+[37mDEBU[0m[0000] Executing: [dd if=/dev/zero of=/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/disk.raw bs=1048576 count=11264] 
+[37mDEBU[0m[0022] Executing: [losetup --show -f /home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/disk.raw] 
+[37mDEBU[0m[0022] Created loopback device at device path: /dev/loop21 
+[37mDEBU[0m[0022] Executing: [sfdisk --delete /dev/loop21]     
+[33mWARN[0m[0022] Failed to clear partition table. Expected if the disk is blank:  
+[37mDEBU[0m[0022] Executing: [parted /dev/loop21 --script mklabel gpt] 
+[37mDEBU[0m[0022] Executing: [parted /dev/loop21 --script mkpart primary fat32 1MiB 200MiB] 
+[37mDEBU[0m[0022] Initializing partition device path: /dev/loop21p1 
+[37mDEBU[0m[0022] Executing: [parted /dev/loop21 --script name 1 ] 
+[37mDEBU[0m[0022] Executing: [parted /dev/loop21 --script set 1 esp on] 
+[37mDEBU[0m[0023] Executing: [parted /dev/loop21 --script set 1 boot on] 
+[37mDEBU[0m[0023] Executing: [mkfs -t vfat /dev/loop21p1]      
+[37mDEBU[0m[0023] Executing: [parted /dev/loop21 --script mkpart primary ext4 200MiB 100%] 
+[37mDEBU[0m[0023] Initializing partition device path: /dev/loop21p2 
+[37mDEBU[0m[0023] Executing: [parted /dev/loop21 --script name 2 ] 
+[37mDEBU[0m[0023] Executing: [mkfs -t ext4 /dev/loop21p2]      
+[37mDEBU[0m[0024] Executing: [blockdev --getsz /dev/loop21p2]  
+[37mDEBU[0m[0024] Executing: [dmsetup create verity_root_fs --table 0 22657024 linear /dev/loop21p2 0] 
+[36mINFO[0m[0024] Remapped partition rootfs for read-only prep to /dev/mapper/verity_root_fs 
+[36mINFO[0m[0024] Selected (kernel) for the kernel             
+[37mTRAC[0m[0024] boot[/boot]                                  
+[37mTRAC[0m[0024] map[/boot:/dev/loop21p1]                     
+[37mTRAC[0m[0024] rootfs[/]                                    
+[37mTRAC[0m[0024] map[/:/dev/mapper/verity_root_fs /boot:/dev/loop21p1] 
+[37mDEBU[0m[0024] Using (/usr/bin/pigz) to extract tar         
+[37mDEBU[0m[0024] Executing: [tar -I /usr/bin/pigz -xf /home/damcilva/repos/CBL-Mariner/toolkit/../build/worker/worker_chroot.tar.gz -C /home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot] 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/dev) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/proc) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/sys) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/run) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/dev/pts) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/installer) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/mnt/cdrom/RPMS) 
+[37mDEBU[0m[0026] Mounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/etc/yum.repos.d) 
+[37mDEBU[0m[0026] Executing: [mount /dev/mapper/verity_root_fs /installroot] 
+[37mDEBU[0m[0026] Executing: [mount -o umask=0077 /dev/loop21p1 /installroot/boot] 
+[37mDEBU[0m[0026] Executing: [tdnf install device-mapper --installroot / --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0027] ReportAction: 'Installing: libsepol-2.9-5.cm1.x86_64' 
+[37mDEBU[0m[0027] ReportAction: 'Installing: libselinux-2.9-3.cm1.x86_64' 
+[37mDEBU[0m[0027] ReportAction: 'Installing: kmod-25-4.cm1.x86_64' 
+[37mDEBU[0m[0027] ReportAction: 'Installing: json-c-0.14-2.cm1.x86_64' 
+[37mDEBU[0m[0027] ReportAction: 'Installing: cracklib-2.9.7-2.cm1.x86_64' 
+[33mWARN[0m[0027] using empty dict to provide pw_dict          
+[37mDEBU[0m[0027] ReportAction: 'Installing: pam-1.3.1-4.cm1.x86_64' 
+[37mDEBU[0m[0027] ReportAction: 'Installing: cryptsetup-libs-2.3.3-2.cm1.x86_64' 
+[37mDEBU[0m[0028] ReportAction: 'Installing: systemd-239-32.cm1.x86_64' 
+[37mDEBU[0m[0028] ReportAction: 'Installing: device-mapper-libs-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0028] ReportAction: 'Installing: device-mapper-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0028] Executing: [tdnf install veritysetup --installroot / --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0028] ReportAction: 'Installing: cracklib-dicts-2.9.7-2.cm1.x86_64' 
+[33mWARN[0m[0028] switching pw_dict to cracklib-dicts          
+[37mDEBU[0m[0028] ReportAction: 'Installing: libpwquality-1.4.2-4.cm1.x86_64' 
+[37mDEBU[0m[0029] ReportAction: 'Installing: veritysetup-2.3.3-2.cm1.x86_64' 
+[37mDEBU[0m[0029] Mounting (/installroot/dev)                  
+[37mDEBU[0m[0029] Mounting (/installroot/proc)                 
+[37mDEBU[0m[0029] Mounting (/installroot/sys)                  
+[37mDEBU[0m[0029] Mounting (/installroot/run)                  
+[37mDEBU[0m[0029] Mounting (/installroot/dev/pts)              
+[37mDEBU[0m[0029] ReportAction: 'Initializing RPM Database'    
+[37mDEBU[0m[0029] Executing: [rpm --root /installroot --initdb] 
+[37mDEBU[0m[0029] Downloading 'mariner-release' package to a clean RPM root under '/installroot'. 
+[37mDEBU[0m[0029] Executing: [tdnf download --alldeps --destdir /installroot mariner-release] 
+[37mDEBU[0m[0029] Loaded plugin: tdnfrepogpgcheck              
+[37mDEBU[0m[0029]                                              
+[37mDEBU[0m[0029] Installing 'mariner-release' package to a clean RPM root under '/installroot'. 
+[37mDEBU[0m[0029] Executing: [rpm -i --root /installroot /installroot/mariner-release-1.0-10.cm1.noarch.rpm] 
+[33mWARN[0m[0029] warning: /installroot/mariner-release-1.0-10.cm1.noarch.rpm: Header V4 RSA/SHA256 Signature, key ID 3135ce90: NOKEY 
+[37mTRAC[0m[0029] Cleaning up leftover RPM files after installing 'mariner-release' package under '/installroot'. 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck kernel --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck hyperv-daemons --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck shim-unsigned --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck grub2-efi-binary --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck ca-certificates --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck core-packages-base-image --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck initramfs --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck verity-readonly-root --installroot /installroot] 
+[37mDEBU[0m[0029] Executing: [tdnf install --assumeno --nogpgcheck cloud-init --installroot /installroot] 
+[37mDEBU[0m[0029] All packages to be installed (183): map[bash:true bc:true bind-utils:true bridge-utils:true bzip2:true bzip2-libs:true ca-certificates:true ca-certificates-base:true ca-certificates-shared:true ca-certificates-tools:true chkconfig:true chrony:true cloud-init:true core-packages-base-image:true core-packages-container:true coreutils:true cpio:true cracklib:true cracklib-dicts:true cryptsetup:true cryptsetup-libs:true curl:true curl-libs:true dbus:true device-mapper:true device-mapper-event:true device-mapper-event-libs:true device-mapper-libs:true dnf:true dnf-data:true dracut:true e2fsprogs:true e2fsprogs-libs:true elfutils:true elfutils-libelf:true expat:true expat-libs:true file:true file-libs:true filesystem:true findutils:true gdbm:true glib:true glibc:true gmp:true gnupg2:true gpgme:true grep:true grub2:true grub2-efi:true grub2-efi-binary:true grub2-pc:true gzip:true hyperv-daemons:true hyperv-daemons-license:true hypervfcopyd:true hypervkvpd:true hypervvssd:true iana-etc:true initramfs:true iproute:true iptables:true iputils:true irqbalance:true json-c:true kernel:true kmod:true krb5:true libaio:true libarchive:true libassuan:true libcap:true libcomps:true libdb:true libdnf:true libedit:true libffi:true libgcc:true libgcrypt:true libgpg-error:true libksba:true libmodulemd:true libpwquality:true librepo:true libselinux:true libsepol:true libsolv:true libssh2:true libstdc++:true libtasn1:true libtool:true libuv:true libxml2:true libyaml:true lua:true lvm2:true mariner-repos:true mariner-rpm-macros:true ncurses:true ncurses-libs:true net-tools:true nettle:true newt:true npth:true nspr:true nss-libs:true openssh-clients:true openssl:true openssl-libs:true p11-kit:true p11-kit-trust:true pam:true pcre-libs:true pinentry:true pkg-config:true popt:true procps-ng:true python3:true python3-PyYAML:true python3-asn1crypto:true python3-certifi:true python3-cffi:true python3-chardet:true python3-configobj:true python3-cryptography:true python3-curses:true python3-dnf:true python3-gpg:true python3-hawkey:true python3-idna:true python3-jinja2:true python3-jsonpatch:true python3-jsonpointer:true python3-jsonschema:true python3-libcomps:true python3-libdnf:true python3-libs:true python3-markupsafe:true python3-oauthlib:true python3-packaging:true python3-prettytable:true python3-pyOpenSSL:true python3-pyasn1:true python3-pycparser:true python3-pyparsing:true python3-requests:true python3-rpm:true python3-setuptools:true python3-six:true python3-urllib3:true python3-xml:true readline:true rpm:true rpm-build-libs:true rpm-devel:true rpm-libs:true sed:true shadow-utils:true shim-unsigned:true slang:true sqlite-libs:true sudo:true systemd:true tar:true tdnf:true tdnf-cli-libs:true tdnf-plugin-repogpgcheck:true tzdata:true util-linux:true util-linux-libs:true verity-readonly-root:true veritysetup:true vim:true wget:true which:true xz:true xz-libs:true zchunk:true zchunk-libs:true zlib:true zstd:true zstd-devel:true zstd-libs:true] 
+[37mDEBU[0m[0029] Executing: [tdnf install filesystem --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0029] ReportAction: 'Installing: filesystem-1.1-7.cm1.x86_64' 
+[37mDEBU[0m[0029] ReportAction: 'Configuring hostname'         
+[37mDEBU[0m[0029] Writing to (/installroot/etc/hostname)       
+[37mDEBU[0m[0029] Executing: [tdnf install kernel --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0030] ReportAction: 'Installing: libstdc++-9.1.0-7.cm1.x86_64' 
+[37mDEBU[0m[0030] ReportAction: 'Installing: libgcc-9.1.0-7.cm1.x86_64' 
+[37mDEBU[0m[0030] ReportAction: 'Installing: libcap-2.26-2.cm1.x86_64' 
+[37mDEBU[0m[0030] ReportAction: 'Installing: grep-3.1-3.cm1.x86_64' 
+[37mDEBU[0m[0030] ReportAction: 'Installing: glibc-2.28-13.cm1.x86_64' 
+[37mDEBU[0m[0031] ReportAction: 'Installing: ncurses-libs-6.2-4.cm1.x86_64' 
+[37mDEBU[0m[0031] ReportAction: 'Installing: readline-7.0-4.cm1.x86_64' 
+[37mDEBU[0m[0031] ReportAction: 'Installing: gmp-6.1.2-5.cm1.x86_64' 
+[37mDEBU[0m[0031] ReportAction: 'Installing: coreutils-8.30-5.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: bash-4.4.18-5.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: xz-libs-5.2.4-3.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: xz-5.2.4-3.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: zlib-1.2.11-3.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: kmod-25-4.cm1.x86_64' 
+[37mDEBU[0m[0032] ReportAction: 'Installing: kernel-5.4.51-11.cm1.x86_64' 
+[33mWARN[0m[0034] ln: failed to create symbolic link '/boot/mariner.cfg': Operation not permitted 
+[37mDEBU[0m[0034] Executing: [tdnf install hyperv-daemons --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0034] ReportAction: 'Installing: util-linux-libs-2.32.1-3.cm1.x86_64' 
+[37mDEBU[0m[0034] ReportAction: 'Installing: hyperv-daemons-license-5.4.51-2.cm1.noarch' 
+[37mDEBU[0m[0034] ReportAction: 'Installing: elfutils-libelf-0.176-3.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: libgpg-error-1.32-4.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: pcre-libs-8.42-4.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: libsepol-2.9-5.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: libselinux-2.9-3.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: libgcrypt-1.8.3-4.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: json-c-0.14-2.cm1.x86_64' 
+[37mDEBU[0m[0035] ReportAction: 'Installing: openssl-libs-1.1.1g-6.cm1.x86_64' 
+[37mDEBU[0m[0036] ReportAction: 'Installing: bzip2-libs-1.0.6-15.cm1.x86_64' 
+[37mDEBU[0m[0036] ReportAction: 'Installing: elfutils-0.176-3.cm1.x86_64' 
+[37mDEBU[0m[0036] ReportAction: 'Installing: libffi-3.2.1-12.cm1.x86_64' 
+[37mDEBU[0m[0036] ReportAction: 'Installing: glib-2.58.0-6.cm1.x86_64' 
+[37mDEBU[0m[0037] ReportAction: 'Installing: cracklib-2.9.7-2.cm1.x86_64' 
+[33mWARN[0m[0037] using empty dict to provide pw_dict          
+[37mDEBU[0m[0037] ReportAction: 'Installing: libdb-5.3.28-4.cm1.x86_64' 
+[37mDEBU[0m[0037] ReportAction: 'Installing: pam-1.3.1-4.cm1.x86_64' 
+[37mDEBU[0m[0037] ReportAction: 'Installing: systemd-239-32.cm1.x86_64' 
+[37mDEBU[0m[0037] ReportAction: 'Installing: device-mapper-libs-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0038] ReportAction: 'Installing: cryptsetup-libs-2.3.3-2.cm1.x86_64' 
+[37mDEBU[0m[0038] ReportAction: 'Installing: hypervvssd-5.4.51-2.cm1.x86_64' 
+[37mDEBU[0m[0038] ReportAction: 'Installing: hypervkvpd-5.4.51-2.cm1.x86_64' 
+[37mDEBU[0m[0038] ReportAction: 'Installing: hypervfcopyd-5.4.51-2.cm1.x86_64' 
+[37mDEBU[0m[0038] ReportAction: 'Installing: hyperv-daemons-5.4.51-2.cm1.x86_64' 
+[37mDEBU[0m[0038] Executing: [tdnf install shim-unsigned --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0038] ReportAction: 'Installing: shim-unsigned-15-3.cm1.x86_64' 
+[37mDEBU[0m[0038] Executing: [tdnf install grub2-efi-binary --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0038] ReportAction: 'Installing: grub2-efi-binary-2.02-24.cm1.x86_64' 
+[37mDEBU[0m[0039] Executing: [tdnf install ca-certificates --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0039] ReportAction: 'Installing: p11-kit-0.23.16.1-2.cm1.x86_64' 
+[37mDEBU[0m[0039] ReportAction: 'Installing: popt-1.16-7.cm1.x86_64' 
+[37mDEBU[0m[0039] ReportAction: 'Installing: slang-2.3.2-3.cm1.x86_64' 
+[37mDEBU[0m[0039] ReportAction: 'Installing: newt-0.52.21-1.cm1.x86_64' 
+[37mDEBU[0m[0039] ReportAction: 'Installing: chkconfig-1.11-1.cm1.x86_64' 
+[37mDEBU[0m[0039] ReportAction: 'Installing: ca-certificates-shared-20200720-9.cm1.noarch' 
+[37mDEBU[0m[0040] ReportAction: 'Installing: libtasn1-4.14-2.cm1.x86_64' 
+[37mDEBU[0m[0040] ReportAction: 'Installing: p11-kit-trust-0.23.16.1-2.cm1.x86_64' 
+[37mDEBU[0m[0040] ReportAction: 'Installing: ca-certificates-tools-20200720-9.cm1.noarch' 
+[37mDEBU[0m[0040] ReportAction: 'Installing: ca-certificates-20200720-9.cm1.noarch' 
+[37mDEBU[0m[0040] Executing: [tdnf install core-packages-base-image --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0042] ReportAction: 'Installing: openssl-1.1.1g-6.cm1.x86_64' 
+[37mDEBU[0m[0042] ReportAction: 'Installing: zstd-libs-1.4.4-1.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: sqlite-libs-3.32.3-2.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: expat-libs-2.2.6-4.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: ncurses-6.2-4.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: lua-5.3.5-8.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: expat-2.2.6-4.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: pkg-config-0.29.2-4.cm1.x86_64' 
+[37mDEBU[0m[0043] ReportAction: 'Installing: util-linux-2.32.1-3.cm1.x86_64' 
+[37mDEBU[0m[0044] ReportAction: 'Installing: device-mapper-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0044] ReportAction: 'Installing: e2fsprogs-libs-1.44.6-3.cm1.x86_64' 
+[37mDEBU[0m[0044] ReportAction: 'Installing: krb5-1.17-4.cm1.x86_64' 
+[37mDEBU[0m[0044] ReportAction: 'Installing: libassuan-2.5.1-3.cm1.x86_64' 
+[37mDEBU[0m[0044] ReportAction: 'Installing: libxml2-2.9.10-3.cm1.x86_64' 
+[37mDEBU[0m[0045] ReportAction: 'Installing: grub2-2.02-24.cm1.x86_64' 
+[37mDEBU[0m[0045] ReportAction: 'Installing: zchunk-libs-1.1.5-2.cm1.x86_64' 
+[37mDEBU[0m[0045] ReportAction: 'Installing: libssh2-1.9.0-1.cm1.x86_64' 
+[37mDEBU[0m[0046] ReportAction: 'Installing: curl-libs-7.68.0-2.cm1.x86_64' 
+[37mDEBU[0m[0046] ReportAction: 'Installing: curl-7.68.0-2.cm1.x86_64' 
+[37mDEBU[0m[0046] ReportAction: 'Installing: cracklib-dicts-2.9.7-2.cm1.x86_64' 
+[33mWARN[0m[0046] switching pw_dict to cracklib-dicts          
+[37mDEBU[0m[0046] ReportAction: 'Installing: gdbm-1.18-3.cm1.x86_64' 
+[37mDEBU[0m[0046] ReportAction: 'Installing: python3-3.7.7-2.cm1.x86_64' 
+[37mDEBU[0m[0047] ReportAction: 'Installing: python3-libs-3.7.7-2.cm1.x86_64' 
+[37mDEBU[0m[0047] ReportAction: 'Installing: shadow-utils-4.6-8.cm1.x86_64' 
+[37mDEBU[0m[0047] ReportAction: 'Installing: mariner-rpm-macros-1.0-3.cm1.noarch' 
+[37mDEBU[0m[0047] ReportAction: 'Installing: nspr-4.21-2.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: nss-libs-3.44-2.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: rpm-libs-4.14.2-10.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: libsolv-0.7.7-4.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: file-libs-5.38-1.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: device-mapper-event-libs-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0048] ReportAction: 'Installing: device-mapper-event-2.03.05-5.cm1.x86_64' 
+[33mWARN[0m[0049] Running in chroot, ignoring request: start   
+[37mDEBU[0m[0049] ReportAction: 'Installing: rpm-build-libs-4.14.2-10.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: file-5.38-1.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: sudo-1.8.31p1-4.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: python3-curses-3.7.7-2.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: libpwquality-1.4.2-4.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: cryptsetup-2.3.3-2.cm1.x86_64' 
+[37mDEBU[0m[0049] ReportAction: 'Installing: zchunk-1.1.5-2.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: grub2-pc-2.02-24.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: grub2-efi-2.02-24.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: libcomps-0.1.11-4.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: python3-libcomps-0.1.11-4.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: pinentry-1.1.0-3.cm1.x86_64' 
+[37mDEBU[0m[0050] ReportAction: 'Installing: openssh-clients-8.0p1-9.cm1.x86_64' 
+[37mDEBU[0m[0051] ReportAction: 'Installing: e2fsprogs-1.44.6-3.cm1.x86_64' 
+[37mDEBU[0m[0051] ReportAction: 'Installing: dbus-1.13.6-3.cm1.x86_64' 
+[37mDEBU[0m[0051] ReportAction: 'Installing: libedit-3.1.20180525-5.cm1.x86_64' 
+[37mDEBU[0m[0051] ReportAction: 'Installing: procps-ng-3.3.15-3.cm1.x86_64' 
+[37mDEBU[0m[0051] ReportAction: 'Installing: libarchive-3.4.2-2.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: rpm-4.14.2-10.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: zstd-1.4.4-1.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: zstd-devel-1.4.4-1.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: rpm-devel-4.14.2-10.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: python3-rpm-4.14.2-10.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: wget-1.20.3-2.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: bc-1.07.1-3.cm1.x86_64' 
+[37mDEBU[0m[0052] ReportAction: 'Installing: bridge-utils-1.6-4.cm1.x86_64' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: cpio-2.13-2.cm1.x86_64' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: iana-etc-2.30-5.cm1.noarch' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: iproute-4.18.0-5.cm1.x86_64' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: iptables-1.8.3-3.cm1.x86_64' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: iputils-20180629-5.cm1.x86_64' 
+[37mDEBU[0m[0053] ReportAction: 'Installing: irqbalance-1.6.0-3.cm1.x86_64' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: tzdata-2019c-3.cm1.noarch' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: which-2.21-7.cm1.x86_64' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: nettle-3.4.1-2.cm1.x86_64' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: bzip2-1.0.6-15.cm1.x86_64' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: ca-certificates-base-20200720-9.cm1.noarch' 
+[37mDEBU[0m[0054] ReportAction: 'Installing: findutils-4.6.0-7.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: gzip-1.9-5.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: libtool-2.4.6-5.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: net-tools-1.60-14.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: sed-4.5-3.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: tar-1.32-2.cm1.x86_64' 
+[37mDEBU[0m[0055] ReportAction: 'Installing: vim-8.1.0388-7.cm1.x86_64' 
+[37mDEBU[0m[0056] ReportAction: 'Installing: libaio-0.3.112-2.cm1.x86_64' 
+[37mDEBU[0m[0056] ReportAction: 'Installing: lvm2-2.03.05-5.cm1.x86_64' 
+[37mDEBU[0m[0056] ReportAction: 'Installing: libuv-1.38.0-1.cm1.x86_64' 
+[37mDEBU[0m[0056] ReportAction: 'Installing: bind-utils-9.16.3-2.cm1.x86_64' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: chrony-3.5.1-2.cm1.x86_64' 
+[33mWARN[0m[0057] Running in chroot, ignoring request: daemon-reload 
+[33mWARN[0m[0057] Running in chroot, ignoring request: start   
+[37mDEBU[0m[0057] ReportAction: 'Installing: tdnf-cli-libs-2.1.0-4.cm1.x86_64' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: tdnf-2.1.0-4.cm1.x86_64' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: dnf-data-4.2.18-2.cm1.noarch' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: libksba-1.3.5-3.cm1.x86_64' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: npth-1.6-3.cm1.x86_64' 
+[37mDEBU[0m[0057] ReportAction: 'Installing: gnupg2-2.2.20-3.cm1.x86_64' 
+[37mDEBU[0m[0058] ReportAction: 'Installing: gpgme-1.13.1-5.cm1.x86_64' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: librepo-1.11.0-2.cm1.x86_64' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: python3-gpg-1.13.1-5.cm1.x86_64' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: tdnf-plugin-repogpgcheck-2.1.0-4.cm1.x86_64' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: mariner-repos-1.0-11.cm1.noarch' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: core-packages-container-0.1-20.cm1.x86_64' 
+[37mDEBU[0m[0059] ReportAction: 'Installing: libyaml-0.2.1-3.cm1.x86_64' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: libmodulemd-2.5.0-3.cm1.x86_64' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: libdnf-0.43.1-1.cm1.x86_64' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: python3-libdnf-0.43.1-1.cm1.x86_64' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: python3-hawkey-0.43.1-1.cm1.x86_64' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: python3-dnf-4.2.18-2.cm1.noarch' 
+[37mDEBU[0m[0060] ReportAction: 'Installing: dnf-4.2.18-2.cm1.noarch' 
+[37mDEBU[0m[0061] ReportAction: 'Installing: core-packages-base-image-0.1-20.cm1.x86_64' 
+[33mWARN[0m[0061] gpg: directory '/root/.gnupg' created        
+[33mWARN[0m[0061] gpg: keybox '/root/.gnupg/pubring.kbx' created 
+[33mWARN[0m[0061] gpg: /root/.gnupg/trustdb.gpg: trustdb created 
+[33mWARN[0m[0061] gpg: key EB3E94ADBE1229CF: public key "Microsoft (Release signing) <gpgsecurity@microsoft.com>" imported 
+[33mWARN[0m[0061] gpg: Total number processed: 1               
+[33mWARN[0m[0061] gpg:               imported: 1               
+[33mWARN[0m[0061] gpg: key 0CD9FED33135CE90: public key "Mariner RPM Release Signing <marinerrpmprod@microsoft.com>" imported 
+[33mWARN[0m[0061] gpg: Total number processed: 1               
+[33mWARN[0m[0061] gpg:               imported: 1               
+[37mDEBU[0m[0061] Executing: [tdnf install initramfs --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0061] ReportAction: 'Installing: dracut-049-2.cm1.x86_64' 
+[37mDEBU[0m[0061] ReportAction: 'Installing: initramfs-2.0-6.cm1.x86_64' 
+[33mWARN[0m[0061] initrd generation of kernel 5.4.51-11.cm1 will be triggered later 
+[33mWARN[0m[0061] initramfs (re)generation triggerin 1 1 2.0-6.cm1 
+[33mWARN[0m[0061] initramfs 2.0-6.cm1 posttrans                
+[37mDEBU[0m[0071] Executing: [tdnf install verity-readonly-root --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0071] ReportAction: 'Installing: veritysetup-2.3.3-2.cm1.x86_64' 
+[37mDEBU[0m[0071] ReportAction: 'Installing: verity-readonly-root-1.1-30.cm1.x86_64' 
+[37mDEBU[0m[0071] Executing: [tdnf install cloud-init --installroot /installroot --nogpgcheck --assumeyes] 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-six-1.11.0-4.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-markupsafe-1.0-5.cm1.x86_64' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-idna-2.7-4.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-jinja2-2.10.1-1.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-configobj-5.0.6-6.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-PyYAML-3.13-5.cm1.x86_64' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-jsonschema-2.6.0-5.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-oauthlib-2.1.0-4.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-prettytable-0.7.2-8.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-setuptools-3.7.7-2.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-xml-3.7.7-2.cm1.x86_64' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-jsonpointer-2.0-3.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-jsonpatch-1.23-4.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-certifi-2018.10.15-5.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-chardet-3.0.4-5.cm1.noarch' 
+[37mDEBU[0m[0072] ReportAction: 'Installing: python3-urllib3-1.24.2-2.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-asn1crypto-0.24.0-3.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-pyasn1-0.4.4-3.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-pycparser-2.18-3.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-cffi-1.11.5-4.cm1.x86_64' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-pyparsing-2.2.0-7.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-packaging-17.1-6.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-cryptography-2.3.1-3.cm1.x86_64' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-pyOpenSSL-18.0.0-6.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: python3-requests-2.20.0-4.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Installing: cloud-init-19.1-5.cm1.noarch' 
+[37mDEBU[0m[0073] ReportAction: 'Copying additional files'     
+[37mDEBU[0m[0073] ReportAction: 'Configuring hosts file'       
+[37mDEBU[0m[0073] Executing: [sed -i 6i127.0.0.1   cbl-mariner /installroot/etc/hosts] 
+[37mDEBU[0m[0073] ReportAction: 'Configuring fstab'            
+[37mDEBU[0m[0073] Executing: [blkid /dev/mapper/verity_root_fs -s UUID -o value] 
+[37mTRAC[0m[0073] 0b829a61-b67f-41bd-a70e-57a2af4d43e9         
+[37mDEBU[0m[0073] Appending to (/installroot/etc/fstab)        
+[37mDEBU[0m[0073] Executing: [blkid /dev/loop21p1 -s UUID -o value] 
+[37mTRAC[0m[0073] 29DE-A3F9                                    
+[37mDEBU[0m[0073] Appending to (/installroot/etc/fstab)        
+[37mDEBU[0m[0073] ReportAction: 'Configuring Crypttab'         
+[37mDEBU[0m[0073] No root user entry found in config file. Setting root password to never expire. 
+[37mDEBU[0m[0073] Executing: [chage -M -1 root]                
+[37mDEBU[0m[0073] Exiting Chroot                               
+[37mDEBU[0m[0073] ReportAction: 'Configuring machine id'       
+[37mDEBU[0m[0073] Creating (/etc/machine-id) with mode (-rw-r--r--) 
+[37mDEBU[0m[0073] Exiting Chroot                               
+[37mDEBU[0m[0073] Executing: [gpgconf --kill gpg-agent]        
+[37mDEBU[0m[0073] Exiting Chroot                               
+[37mDEBU[0m[0073] Executing: [blkid /dev/mapper/verity_root_fs -s UUID -o value] 
+[37mTRAC[0m[0073] 0b829a61-b67f-41bd-a70e-57a2af4d43e9         
+[37mDEBU[0m[0073] ReportAction: 'Configuring bootloader'       
+[37mDEBU[0m[0073] Copying (/installer/efi/grub/grub.cfg) -> (/installroot/boot/efi/boot/grub2/grub.cfg) 
+[37mDEBU[0m[0073] Executing: [cp --preserve=mode /installer/efi/grub/grub.cfg /installroot/boot/efi/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Calling chmod on (/installroot/boot/efi/boot/grub2/grub.cfg) with the mode (-rw-------) 
+[37mDEBU[0m[0073] Adding UUID('0b829a61-b67f-41bd-a70e-57a2af4d43e9') to /installroot/boot/efi/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.BootUUID}}`0b829a61-b67f-41bd-a70e-57a2af4d43e9` /installroot/boot/efi/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Executing: [blkid /dev/mapper/verity_root_fs -s PARTUUID -o value] 
+[37mTRAC[0m[0073]                                              
+[37mDEBU[0m[0073] Copying (/installer/grub2/grub.cfg) -> (/installroot/boot/grub2/grub.cfg) 
+[37mDEBU[0m[0073] Executing: [cp --preserve=mode /installer/grub2/grub.cfg /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Calling chmod on (/installroot/boot/grub2/grub.cfg) with the mode (-rw-------) 
+[37mDEBU[0m[0073] Adding UUID('0b829a61-b67f-41bd-a70e-57a2af4d43e9') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.BootUUID}}`0b829a61-b67f-41bd-a70e-57a2af4d43e9` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding RootDevice('verityroot:PARTUUID=') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.RootPartition}}`verityroot:PARTUUID=` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding luks('') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.LuksUUID}}`` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding lvm('') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.LVM}}`` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding ImaPolicy('') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.IMAPolicy}}`` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding Verity Root ('rd.verityroot.mount=/dev/mapper/verity_root_fs rd.verityroot.hashtree=/verity_root_fs.hashtree rd.verityroot.roothash=/verity_root_fs.roothash rd.verityroot.overlays="" rd.verityroot.overlay_debug_mount=/overlay_tmpfs_mnt rd.verityroot.fecdata=/verity_root_fs.fec rd.verityroot.fecroots=2') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.ReadOnlyVerityRoot}}`rd.verityroot.mount=/dev/mapper/verity_root_fs rd.verityroot.hashtree=/verity_root_fs.hashtree rd.verityroot.roothash=/verity_root_fs.roothash rd.verityroot.overlays="" rd.verityroot.overlay_debug_mount=/overlay_tmpfs_mnt rd.verityroot.fecdata=/verity_root_fs.fec rd.verityroot.fecroots=2` /installroot/boot/grub2/grub.cfg] 
+[37mDEBU[0m[0073] Adding ExtraCommandLine('') to /installroot/boot/grub2/grub.cfg 
+[37mDEBU[0m[0073] Executing: [sed -i s`{{.ExtraCommandLine}}`` /installroot/boot/grub2/grub.cfg] 
+[36mINFO[0m[0073] Configuring root for read only with dm-verity 
+[37mDEBU[0m[0073] Executing: [dmsetup suspend verity_root_fs]  
+[37mDEBU[0m[0074] Executing: [dmsetup table verity_root_fs]    
+[37mDEBU[0m[0074] Executing: [dmsetup reload --readonly verity_root_fs --table 0 22657024 linear 259:4 0
+] 
+[37mDEBU[0m[0074] Executing: [dmsetup resume verity_root_fs]   
+[37mDEBU[0m[0074] Executing: [mount -o remount,ro /dev/mapper/verity_root_fs] 
+[36mINFO[0m[0074] Generating dm verity read-only partition, this may take several minutes 
+[37mDEBU[0m[0074] Executing: [veritysetup --fec-device=verityworkingdir/verity_root_fs/verity_root_fs.fec --fec-roots=2 --salt 8e872fd932faa4680ee602800f786c01e83ff9afd7a2bdb45d07d691bc889751 --hash sha256 --verbose --debug format /dev/mapper/verity_root_fs verityworkingdir/verity_root_fs/verity_root_fs.hashtree] 
+[37mDEBU[0m[0256] Executing: [grep ^Root hash:]                
+[37mDEBU[0m[0256] Executing: [awk BEGIN {ORS=""}; END{ print $NF }] 
+[36mINFO[0m[0256] Verity partition completed, root hash: '686a8dcb961fccdb0b325bc1d0232fe8603aa0ce0b3cf4c07a4bf83487892df7' 
+[36mINFO[0m[0256] Verifying the verity partition               
+[37mDEBU[0m[0256] Executing: [veritysetup --verbose --debug verify /dev/mapper/verity_root_fs verityworkingdir/verity_root_fs/verity_root_fs.hashtree 686a8dcb961fccdb0b325bc1d0232fe8603aa0ce0b3cf4c07a4bf83487892df7] 
+[37mDEBU[0m[0282] Executing: [mkdir verityworkingdir/verity_root_fs/initramfs_mnt] 
+[37mDEBU[0m[0660] Executing: [mv /installroot/boot/initrd.img-5.4.51-11.cm1 verityworkingdir/verity_root_fs/initrd.img-5.4.51-11.cm1.gz] 
+[37mDEBU[0m[0661] Executing: [gunzip -d verityworkingdir/verity_root_fs/initrd.img-5.4.51-11.cm1.gz] 
+[37mDEBU[0m[0663] Executing: [bash -c pushd verityworkingdir/verity_root_fs/initramfs_mnt && cpio -i < ../initrd.img-5.4.51-11.cm1 && popd] 
+[37mDEBU[0m[0668] Executing: [cp verityworkingdir/verity_root_fs/verity_root_fs.fec verityworkingdir/verity_root_fs/initramfs_mnt/verity_root_fs.fec] 
+[37mDEBU[0m[0671] Executing: [cp verityworkingdir/verity_root_fs/verity_root_fs.hashtree verityworkingdir/verity_root_fs/initramfs_mnt/verity_root_fs.hashtree] 
+[37mDEBU[0m[0676] Executing: [cp verityworkingdir/verity_root_fs/verity_root_fs.log verityworkingdir/verity_root_fs/initramfs_mnt/verity_root_fs.log] 
+[37mDEBU[0m[0677] Executing: [cp verityworkingdir/verity_root_fs/verity_root_fs.roothash verityworkingdir/verity_root_fs/initramfs_mnt/verity_root_fs.roothash] 
+[37mDEBU[0m[0679] Executing: [sync]                            
+[37mDEBU[0m[0682] Executing: [bash -c pushd verityworkingdir/verity_root_fs/initramfs_mnt && find . | cpio -H newc -o > ../initrd.img-5.4.51-11.cm1 ; popd] 
+[37mDEBU[0m[0796] Executing: [gzip verityworkingdir/verity_root_fs/initrd.img-5.4.51-11.cm1] 
+[37mDEBU[0m[0809] Executing: [mv verityworkingdir/verity_root_fs/initrd.img-5.4.51-11.cm1.gz /installroot/boot/initrd.img-5.4.51-11.cm1] 
+[37mDEBU[0m[0834] Unmounting (/installroot/sys)                
+[37mDEBU[0m[0834] Unmounting (/installroot/run)                
+[37mDEBU[0m[0834] Unmounting (/installroot/proc)               
+[37mDEBU[0m[0834] Unmounting (/installroot/dev/pts)            
+[37mDEBU[0m[0834] Unmounting (/installroot/dev)                
+[37mTRAC[0m[0834] Destroying InstallRoot                       
+[31mERRO[0m[0834] Unmounting /boot                             
+[31mERRO[0m[0834] Unmounting /                                 
+[37mDEBU[0m[0835] Exiting Chroot                               
+[37mDEBU[0m[0835] Copying (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/disk.raw) -> (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/imager_output/disk0.raw) 
+[37mDEBU[0m[0835] Executing: [cp --preserve=mode /home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/disk.raw /home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/imager_output/disk0.raw] 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/sys) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/run) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/proc) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/mnt/cdrom/RPMS) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/installer) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/etc/yum.repos.d) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/dev/pts) 
+[37mDEBU[0m[0836] Unmounting (/home/damcilva/repos/CBL-Mariner/build/imagegen/core-efi/workspace/setuproot/dev) 
+[37mDEBU[0m[0836] Executing: [dmsetup remove verity_root_fs]   
+[36mINFO[0m[0836] Cleaning up verity device verity_root_fs     
+[36mINFO[0m[0836] Detaching Loopback Device Path: /dev/loop21  
+[37mDEBU[0m[0836] Executing: [losetup -d /dev/loop21]          

@@ -29,4 +29,6 @@ func main() {
 	logger.InitBestEffort(*logFile, *logLevel)
 
 	logger.Log.Info(hello.World())
+
+	hello.TestInitramfs()
 }

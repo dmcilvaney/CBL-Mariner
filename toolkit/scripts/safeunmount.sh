@@ -6,6 +6,10 @@
 dir=${1}
 for dir in $(find ${dir} -type d) ; do
     retries=10
+    if mountpoint -q ${dir} ; then
+        echo "Unmounting $dir"
+        umount -l ${dir}
+    fi
     while mountpoint -q ${dir} ; do
         echo "ERROR: Mountpoint still present at $dir, retrying unmount ${retries} times"
         umount -l ${dir}

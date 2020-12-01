@@ -86,11 +86,11 @@ echo "initramfs (re)generation" %* >&2
 cat > /dev/null \
 if [ -f %{_localstatedir}/lib/rpm-state/initramfs/regenerate ]; then \
     echo "(re)generate initramfs for all kernels," %* >&2 \
-    mkinitrd -q \
+    mkinitrd -v \
 elif [ -d %{_localstatedir}/lib/rpm-state/initramfs/pending ]; then \
     for k in `ls %{_localstatedir}/lib/rpm-state/initramfs/pending/`; do \
         echo "(re)generate initramfs for $k," %* >&2 \
-        mkinitrd -q /boot/initrd.img-$k $k -k \
+        mkinitrd -v /boot/initrd.img-$k $k -k \
     done; \
 fi \
 %removal_action
@@ -98,7 +98,7 @@ fi \
 %posttrans
 echo "initramfs" %{version}-%{release} "posttrans" >&2
 %removal_action
-mkinitrd -q
+mkinitrd -v
 
 %postun
 echo "initramfs" %{version}-%{release} "postun" >&2

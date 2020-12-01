@@ -64,7 +64,8 @@ fetch-external-image-packages: $(image_external_package_cache_summary)
 validate-image-config: $(validate-config)
 $(STATUS_FLAGS_DIR)/validate-image-config%.flag: $(go-imageconfigvalidator) $(depend_CONFIG_FILE) $(CONFIG_FILE) $(config_other_files)
 	$(go-imageconfigvalidator) \
-		--input=$(CONFIG_FILE) && \
+		--input=$(CONFIG_FILE) \
+		--dir=$(CONFIG_BASE_DIR) && \
 	touch $@
 
 
@@ -104,7 +105,9 @@ $(imager_disk_output_dir): $(STATUS_FLAGS_DIR)/imager_disk_output.flag
 	@touch $@
 	@echo Finished updating $@
 
-$(STATUS_FLAGS_DIR)/imager_disk_output.flag: $(go-imager) $(image_package_cache_summary) $(imggen_local_repo) $(depend_CONFIG_FILE) $(CONFIG_FILE) $(validate-config) $(packagelist_files) $(assets_files) $(imggen_packagelist_files)
+.PHONY: $(STATUS_FLAGS_DIR)/imager_disk_output.flag
+
+$(STATUS_FLAGS_DIR)/imager_disk_output.flag: $(go-imager) # $(image_package_cache_summary) $(imggen_local_repo) $(depend_CONFIG_FILE) $(CONFIG_FILE) $(validate-config) $(packagelist_files) $(assets_files) $(imggen_packagelist_files)
 	$(if $(CONFIG_FILE),,$(error Must set CONFIG_FILE=))
 	mkdir -p $(imager_disk_output_dir) && \
 	rm -rf $(imager_disk_output_dir)/* && \

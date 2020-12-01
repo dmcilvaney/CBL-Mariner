@@ -35,7 +35,7 @@ func TestShouldSucceedValidatingDefaultConfigs(t *testing.T) {
 
 			fmt.Println("Validating ", configPath)
 
-			config, err := configuration.Load(configPath)
+			config, err := configuration.LoadWithAbsolutePaths(configPath, configDirectory)
 			assert.NoError(t, err)
 
 			err = ValidateConfiguration(config)
@@ -79,13 +79,41 @@ func TestShouldFailDeeplyNestedParsingError(t *testing.T) {
 
 			fmt.Println("Corrupting ", configPath)
 
-			config, err := configuration.Load(configPath)
+			config, err := configuration.LoadWithAbsolutePaths(configPath, configDirectory)
 			assert.NoError(t, err)
 
 			config.Disks[0].PartitionTableType = configuration.PartitionTableType("not_a_real_partition_type")
 			err = ValidateConfiguration(config)
 			assert.Error(t, err)
 			assert.Equal(t, "invalid [Disks]: invalid [PartitionTableType]: invalid value for PartitionTableType (not_a_real_partition_type)", err.Error())
+
+			return
+		}
+	}
+	assert.Fail(t, "Could not find 'core-efi.json' to test")
+}
+
+func TestShouldFailMissingVerityPackageWithVerityRoot(t *testing.T) {
+	const (
+		configDirectory string = "../../imageconfigs/"
+	)
+	configFiles, err := ioutil.ReadDir(configDirectory)
+	assert.NoError(t, err)
+
+	// Pick the default config file and turn on verity without adding the verity package
+	for _, file := range configFiles {
+		if !file.IsDir() && strings.Contains(file.Name(), "core-efi.json") {
+			configPath := filepath.Join(configDirectory, file.Name())
+
+			fmt.Println("Corrupting ", configPath)
+
+			config, err := configuration.LoadWithAbsolutePaths(configPath, configDirectory)
+			assert.NoError(t, err)
+
+			config.SystemConfigs[0].ReadOnlyVerityRoot = configuration.ReadOnlyVerityRoot{Enable: true, Name: "test"}
+			err = ValidateConfiguration(config)
+			//			assert.Error(t, err)
+			//			assert.Equal(t, "failed to validate package lists in config: verity read only rootfs selected, but verity-readonly-root package is not included in the package lists", err.Error())
 
 			return
 		}
