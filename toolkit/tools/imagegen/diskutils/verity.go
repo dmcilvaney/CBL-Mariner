@@ -30,11 +30,16 @@ const (
 // - MappedDevice is the full path of the created device mapper device
 // - BackingDevice is the underlying file/device which backs the partition
 // - FecRoots is the number of error correcting roots, 0 to ommit error correction
+// - TmpfsOverlays is a list of tmpfs overlays which should be created after the verity partition is mounted
 type VerityDevice struct {
-	MappedName    string
-	MappedDevice  string
-	BackingDevice string
-	FecRoots      int
+	MappedName           string
+	MappedDevice         string
+	BackingDevice        string
+	FecRoots             int
+	ValidateOnBoot       bool
+	UseRootHashSignature bool
+	ErrorBehaviour       string
+	TmpfsOverlays        []string
 }
 
 func initramfsWorkAround(workingFolder, initramfsPath string, filesToAdd []string) (err error) {
@@ -67,8 +72,6 @@ func initramfsWorkAround(workingFolder, initramfsPath string, filesToAdd []strin
 		dst := filepath.Join(mountdir, baseName)
 		_, stderr, err = shell.Execute("cp", file, dst)
 	}
-
-	_, _, _ = shell.Execute("sync")
 
 	_, stderr, err = shell.Execute("bash", "-c", "pushd "+mountdir+" && find . | cpio -H newc -o > ../"+filepath.Base(cpioInitramfs)+" ; popd")
 	if err != nil {
@@ -140,6 +143,7 @@ func (v *VerityDevice) AddRootVerityFilesToInitramfs(workingFolder, initramfsPat
 	// 		return fmt.Errorf("failed adding %s to initramfs: %w", filePath, err)
 	// 	}
 	// }
+
 	return
 }
 
@@ -276,11 +280,15 @@ func PrepReadOnlyDevice(partDevPath string, partition configuration.Partition, r
 	readOnlyDevice.BackingDevice = partDevPath
 	readOnlyDevice.MappedName = finalDeviceName
 	readOnlyDevice.MappedDevice = filepath.Join("/dev/mapper/", finalDeviceName)
+	readOnlyDevice.ErrorBehaviour = readOnlyConfig.VerityErrorBehavior.String()
+	readOnlyDevice.ValidateOnBoot = readOnlyConfig.ValidateOnBoot
 	if readOnlyConfig.ErrorCorrectionEnable {
 		readOnlyDevice.FecRoots = readOnlyConfig.ErrorCorrectionEncodingRoots
 	} else {
 		readOnlyDevice.FecRoots = 0
 	}
+	readOnlyDevice.TmpfsOverlays = readOnlyConfig.TmpfsOverlays
+	readOnlyDevice.UseRootHashSignature = readOnlyConfig.RootHashSignatureEnable
 
 	// linear mappings need to know the size of the disk in blocks ahead of time
 	deviceSizeStr, stderr, err := shell.Execute("blockdev", "--getsz", readOnlyDevice.BackingDevice)
@@ -315,7 +323,7 @@ func PrepReadOnlyDevice(partDevPath string, partition configuration.Partition, r
 // CleanupVerityDevice removes the device mapper linear mapping, but leaves the backing device unchanged
 func (v *VerityDevice) CleanupVerityDevice() {
 	stdout, stderr, err := shell.Execute("dmsetup", "remove", v.MappedName)
-	logger.Log.Infof("Cleaning up verity device %s", v.MappedName)
+	logger.Log.Infof(stdout)
 	if err != nil {
 		err = fmt.Errorf("Unable to clean up device mapper device '%s' '%s': %w", stdout, stderr, err)
 		return

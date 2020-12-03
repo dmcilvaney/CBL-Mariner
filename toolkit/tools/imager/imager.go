@@ -135,6 +135,7 @@ func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configur
 		if isLoopDevice {
 			isOfflineInstall = true
 			defer diskutils.DetachLoopbackDevice(diskDevPath)
+			defer diskutils.BlockOnDiskIO(diskDevPath)
 		}
 
 		if systemConfig.ReadOnlyVerityRoot.Enable {
@@ -568,7 +569,7 @@ func configureDiskBootloader(systemConfig configuration.SystemConfig, installChr
 		rootDevice = fmt.Sprintf("PARTUUID=%v", partUUID)
 	}
 
-	err = installutils.InstallGrubCfg(installChroot.RootDir(), rootDevice, bootUUID, encryptedRoot, systemConfig.KernelCommandLine, systemConfig.ReadOnlyVerityRoot)
+	err = installutils.InstallGrubCfg(installChroot.RootDir(), rootDevice, bootUUID, encryptedRoot, systemConfig.KernelCommandLine, readOnlyRoot)
 	if err != nil {
 		err = fmt.Errorf("failed to install main grub config file: %s", err)
 		return

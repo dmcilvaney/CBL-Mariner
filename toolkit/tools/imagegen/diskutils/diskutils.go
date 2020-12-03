@@ -217,6 +217,29 @@ func SetupLoopbackDevice(diskFilePath string) (devicePath string, err error) {
 	return
 }
 
+// BlockOnDiskIO waits until all outstanding operations against a disk complete.
+func BlockOnDiskIO(diskDevPath string) (err error) {
+	stdout, stderr, err := shell.Execute("sync")
+	if err != nil {
+		logger.Log.Error(stderr)
+		return
+	}
+	logger.Log.Infof("Flushing all IO to disk for %s", diskDevPath)
+	outstandingOps := "-1"
+	for busy := true; busy; busy = (outstandingOps != "0") {
+		stdout, stderr, err = shell.Execute("cat", filepath.Join("/sys/block/", strings.TrimPrefix(diskDevPath, "/dev"), "stat"))
+		if err != nil {
+			logger.Log.Error(stderr)
+			return
+		}
+		logger.Log.Debug("Outstanding operations: " + stdout)
+		deviceStatsList := strings.Fields(stdout)
+		outstandingOps = deviceStatsList[8]
+		logger.Log.Debug("Outstanding operations on " + diskDevPath + ": " + outstandingOps)
+	}
+	return
+}
+
 // DetachLoopbackDevice detaches the specified disk
 func DetachLoopbackDevice(diskDevPath string) (err error) {
 	logger.Log.Infof("Detaching Loopback Device Path: %v", diskDevPath)

@@ -16,7 +16,10 @@ cmdline() {
 
 install() {
     inst "veritysetup"
-    inst  "mktemp"
+    inst "mktemp"
+    inst "tail"
+    inst "less"
+    inst "nano"
     #inst_hook cmdline 20 "$moddir/parse-verity-root.sh"
     inst_hook cmdline 20 "$moddir/verity_parse_v2.sh"
     #inst_hook pre-pivot 99 "$moddir/add-verity-overlays.sh"

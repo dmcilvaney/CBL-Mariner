@@ -1,11 +1,11 @@
 {
  "Signatures": {
   "init_verity.sh": "f61bed4b4d8082a6e7de2778a2d2956f27ce6c82c91303931db92dea064ecc5d",
-  "module-setup.sh": "5da7eadc6cd9177ea79785a79e7e9f2702c9252f71d293c0ebc93ec29d8e0ad2",
+  "module-setup.sh": "577cb9bdb4113e03a5603c53046292b8b6d9b9f89062ad5666714fd8ec4de0a8",
   "mount_verity.sh": "f61bed4b4d8082a6e7de2778a2d2956f27ce6c82c91303931db92dea064ecc5d",
   "verity-root-generator.sh": "58e3303d649f170f5aefcf43c321e89a30704c22b5653a13d38e01c13b467b3f",
   "verity.conf": "83db9e2a2846305abe755e7b3ab92141198a49a98e80ba6a0c1288e155f7db7b",
-  "verity_mount_v2.sh": "4247278f59dfbca1cba97162ae87e14426ddc3f12f5fa4b28d94009f249e284b",
-  "verity_parse_v2.sh": "d6102f57b3aec8caa401afdd1d9727b47465f6d1319d549f9ab999ac2e2f4aa8"
+  "verity_mount_v2.sh": "a711a0a7604f74f758602996d6502107f2e0e954ef9f445d3f883ff9161c25ba",
+  "verity_parse_v2.sh": "2848a5c9a5c9bb1b8e608f17f9be78050d48bb8afa5c8c7a7a9a4e95f7e4e3f7"
  }
 }

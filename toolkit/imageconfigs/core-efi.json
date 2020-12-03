@@ -64,12 +64,22 @@
                 
             },
             "ReadOnlyVerityRoot": {
-                "Enable": true
+                "Enable": true,
+                "ValidateOnBoot": true,
+                "TmpfsOverlays": [
+                    "/var"
+                ]
             },
             "KernelCommandLine": {
                 "ExtraCommandLine": "console=tty0 console=ttyS0=9800 rd.shell rd.debug"
             },
-            "Hostname": "cbl-mariner"
+            "Hostname": "cbl-mariner",
+            "Users": [
+                {
+                    "Name": "root",
+                    "Password": "p@ssw0rd"
+                }
+            ]
         }
     ]
 }

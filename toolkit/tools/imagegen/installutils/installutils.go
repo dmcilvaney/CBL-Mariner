@@ -167,7 +167,11 @@ func umount(path string) (err error) {
 		unmountFlags  = 0
 	)
 	err = retry.Run(func() error {
-		return syscall.Unmount(path, unmountFlags)
+		innerErr := syscall.Unmount(path, unmountFlags)
+		if innerErr != nil {
+			logger.Log.Errorf("%s, %v, %s", path, unmountFlags, innerErr.Error())
+		}
+		return innerErr
 	}, retryAttempts, retryDuration)
 	return
 }
@@ -700,7 +704,7 @@ func addEntryToCrypttab(installRoot string, devicePath string, encryptedRoot dis
 // - kernelCommandLine contains additional kernel parameters which may be optionally set
 // Note: this boot partition could be different than the boot partition specified in the bootloader.
 // This boot partition specifically indicates where to find the kernel, config files, and initrd
-func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot configuration.ReadOnlyVerityRoot) (err error) {
+func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot diskutils.VerityDevice) (err error) {
 	const (
 		assetGrubcfgFile = "/installer/grub2/grub.cfg"
 		grubCfgFile      = "boot/grub2/grub.cfg"
@@ -1395,25 +1399,38 @@ func setGrubCfgIMA(grubPath string, kernelCommandline configuration.KernelComman
 	return
 }
 
-func setGrubCfgReadOnlyVerityRoot(grubPath string, readOnlyRoot configuration.ReadOnlyVerityRoot) (err error) {
+// setGrubCfgReadOnlyVerityRoot populates the arguments needed to boot with a dm-verity read-only root partition
+func setGrubCfgReadOnlyVerityRoot(grubPath string, readOnlyRoot diskutils.VerityDevice) (err error) {
 	var (
-		verityMount       = fmt.Sprintf("rd.verityroot.mount=/dev/mapper/verity-%s", readOnlyRoot.Name)
-		verityHash        = fmt.Sprintf("rd.verityroot.hashtree=/%s.hashtree", readOnlyRoot.Name)
-		verityRootHash    = fmt.Sprintf("rd.verityroot.roothash=/%s.roothash", readOnlyRoot.Name)
-		verityFECData     = fmt.Sprintf("rd.verityroot.fecdata=/%s.fec", readOnlyRoot.Name)
-		verityFECRoots    = fmt.Sprintf("rd.verityroot.fecroots=%d", readOnlyRoot.ErrorCorrectionEncodingRoots)
-		verityOverlays    = fmt.Sprintf("rd.verityroot.overlays=\"%s\"", strings.Join(readOnlyRoot.TmpfsOverlays, " "))
-		verityDebugMounts = "rd.verityroot.overlay_debug_mount=/overlay_tmpfs_mnt"
-		verityPattern     = "{{.ReadOnlyVerityRoot}}"
-		verityArgs        = ""
+		verityMountArg          = fmt.Sprintf("rd.verityroot.devicename=%s", readOnlyRoot.MappedName)
+		verityHashArg           = fmt.Sprintf("rd.verityroot.hashtree=/%s.hashtree", readOnlyRoot.MappedName)
+		verityRootHashArg       = fmt.Sprintf("rd.verityroot.roothash=/%s.roothash", readOnlyRoot.MappedName)
+		verityRootHashSigArg    = fmt.Sprintf("rd.verityroot.roothashsig=/%s.p7", readOnlyRoot.MappedName)
+		verityFECDataArg        = fmt.Sprintf("rd.verityroot.fecdata=/%s.fec", readOnlyRoot.MappedName)
+		verityFECRootsArg       = fmt.Sprintf("rd.verityroot.fecroots=%d", readOnlyRoot.FecRoots)
+		verityErrorHandling     = fmt.Sprintf("rd.verityroot.verityerrorhandling=%s", readOnlyRoot.ErrorBehaviour)
+		verityValidateOnBootArg = fmt.Sprintf("rd.verityroot.validateonboot=%v", readOnlyRoot.ValidateOnBoot)
+		verityOverlaysArg       = fmt.Sprintf("rd.verityroot.overlays=\"%s\"", strings.Join(readOnlyRoot.TmpfsOverlays, " "))
+		verityDebugMountsArg    = "rd.verityroot.overlays_debug_mount=/overlay_tmpfs_mnt"
+		verityPattern           = "{{.ReadOnlyVerityRoot}}"
+		verityArgs              = ""
 
 		cmdline configuration.KernelCommandLine
 	)
 
-	if readOnlyRoot.Enable {
-		verityArgs = fmt.Sprintf("%s %s %s %s %s", verityMount, verityHash, verityRootHash, verityOverlays, verityDebugMounts)
-		if readOnlyRoot.ErrorCorrectionEnable {
-			verityArgs = fmt.Sprintf("%s %s %s", verityArgs, verityFECData, verityFECRoots)
+	if readOnlyRoot.MappedName != "" {
+		verityArgs = fmt.Sprintf("%s %s %s %s %s %s %s", verityMountArg,
+			verityHashArg,
+			verityRootHashArg,
+			verityOverlaysArg,
+			verityDebugMountsArg,
+			verityErrorHandling,
+			verityValidateOnBootArg)
+		if readOnlyRoot.FecRoots > 0 {
+			verityArgs = fmt.Sprintf("%s %s %s", verityArgs, verityFECDataArg, verityFECRootsArg)
+		}
+		if readOnlyRoot.UseRootHashSignature {
+			verityArgs = fmt.Sprintf("%s %s", verityArgs, verityRootHashSigArg)
 		}
 	}
 

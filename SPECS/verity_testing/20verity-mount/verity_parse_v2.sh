@@ -15,14 +15,52 @@ fi
 [ "${verityroot%%:*}" = "verityroot" ] || exit 0
 
 # Get all other required parameters
-[ -z "$verityhashtree" ] && verityhashtree=$(getarg rd.verityroot.hashtree=)
-[ -z "$verityroothash" ] && verityroothash=$(getarg rd.verityroot.roothash=)
+    #Required:
+        #rd.verityroot.devicename=desired_device_mapper_name
+        #rd.verityroot.hashtree=/path/to/hashtree | <DEVICE_TYPE>=<DEVICE_ID>
+        #rd.verityroot.roothash=/path/to/roothash
+
+    #Optional
+        #rd.verityroot.roothashsig=/path/to/file
+        #rd.verityroot.verityerrorhandling=ignore|restart|panic
+        #rd.verityroot.validateonboot=true/false
+        #rd.verityroot.fecdata=/path/to/fecdata | <DEVICE_TYPE>=<DEVICE_ID>
+        #rd.verityroot.fecroots=#
+        #rd.verityroot.overlays="/path/to/overlay/directory /other/path"
+        #rd.verityroot.overlays_debug_mount=/path/to/mount/debug/info
 [ -z "$veritydevicename" ] && veritydevicename=$(getarg rd.verityroot.devicename=)
 [ -n "$veritydevicename" ] || veritydevicename="verity_root"
+[ -z "$verityhashtree" ] && verityhashtree=$(getarg rd.verityroot.hashtree=)
+[ -z "$verityroothash" ] && verityroothash=$(getarg rd.verityroot.roothash=)
 
+[ -z "$verityroothashsig" ] && verityroothashsig=$(getarg rd.verityroot.roothashsig=/path/to/file=)
+[ -z "$verityerrorhandling" ] && verityerrorhandling=$(getarg rd.verityroot.verityerrorhandling=)
+[ -z "$validateonboot" ] && validateonboot=$(getarg rd.verityroot.validateonboot=)
+[ -z "$verityfecdata" ] && verityfecdata=$(getarg rd.verityroot.fecdata=)
+[ -z "$verityfecroots" ] && verityfecroots=$(getarg rd.verityroot.fecroots=)
+[ -z "$overlays" ] && verity_overlays=$(getarg rd.verityroot.overlays=)
+[ -z "$overlays_debug_mount" ] && overlays_debug_mount=$(getarg rd.verityroot.overlays_debug_mount=)
+
+# Check the required parameters are pressent
+[ -n "$veritydevicename" ] || die "verityroot requires rd.verityroot.devicename="
 [ -n "$verityhashtree" ] || die "verityroot requires rd.verityroot.hashtree="
 [ -n "$verityroothash" ] || die "verityroot requires rd.verityroot.roothash="
 
+# Validate the optional paramters
+# Make sure we have either both or neither FEC arguments
+[ -n "$verityfecdata" -a -z "$verityfecroots" ] && die "verityroot FEC requires both rd.verityroot.fecdata= and rd.verityroot.fecroots="
+[ -z "$verityfecdata" -a -n "$verityfecroots" ] && die "verityroot FEC requires both rd.verityroot.fecdata= and rd.verityroot.fecroots="
+
+if [ -n "$verityerrorhandling" ]; then 
+    [ "$verityerrorhandling" == "ignore" -o \
+    "$verityerrorhandling" == "restart" -o \
+    "$verityerrorhandling" == "panic" ] || die "verityroot rd.verityroot.verityerrorhandling= must be one of [ignore,restart,panic]"
+fi
+
+if [ -n "$validateonboot" ]; then 
+    [ "$validateonboot" == "true" -o \
+    "$validateonboot" == "false" ] || die "verityroot rd.verityroot.validateonboot= must be one of [true,false]"
+fi
 
 expand_persistent_dev() {
     local _dev=$1
@@ -55,7 +93,6 @@ verityroothash=$(expand_persistent_dev $verityroothash)
 
 info "Going to try to mount $verityroot with $verityhashtree and $verityroothash"
 rootok=1
-unset root
 root="${verityroot}"
 
 # We still want to wait for /dev/root, but we won't actually mount anything there

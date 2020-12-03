@@ -39,8 +39,9 @@ type ReadOnlyVerityRoot struct {
 	ErrorCorrectionEnable        bool                `json:"ErrorCorrectionEnable"`
 	ErrorCorrectionEncodingRoots int                 `json:"ErrorCorrectionEncodingRoots"`
 	RootHashSignatureEnable      bool                `json:"RootHashSignatureEnable"`
+	ValidateOnBoot               bool                `json:"ValidateOnBoot"`
 	VerityErrorBehavior          VerityErrorBehavior `json:"VerityErrorBehavior"`
-	TmpfsOverlays                []string            `json:"TempOverlays"`
+	TmpfsOverlays                []string            `json:"TmpfsOverlays"`
 }
 
 const (

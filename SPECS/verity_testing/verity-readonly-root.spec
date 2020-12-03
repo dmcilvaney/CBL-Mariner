@@ -1,7 +1,7 @@
 Summary:        Verity testing
 Name:           verity-readonly-root
 Version:        1.1
-Release:        30%{?dist}
+Release:        43%{?dist}
 License:        Charityware
 URL:            http://www.vim.org
 Group:          Applications/Editors
@@ -15,7 +15,10 @@ Source4:        20verity-mount/verity-root-generator.sh
 Source5:        20verity-mount/verity_parse_v2.sh
 Source6:        20verity-mount/verity_mount_v2.sh
 Requires:       veritysetup
+Requires:       device-mapper
 Requires:       dracut
+
+Requires:   nano
 
 %description
 vt
@@ -42,7 +45,7 @@ mkdir -p %{buildroot}/overlay_tmpfs_mnt
 %dir /overlay_tmpfs_mnt
 
 %changelog
-*   Wed Nov 13 2019 Dan <damcilva@microsoft.com> 1.1-30
+*   Wed Nov 13 2019 Dan <damcilva@microsoft.com> 1.1-43
 -   Initial Mariner version 2.
 *   Wed Nov 13 2019 Dan <damcilva@microsoft.com> 1.0
 -   Initial Mariner version.
