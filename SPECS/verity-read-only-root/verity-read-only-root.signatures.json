@@ -1,0 +1,10 @@
+{
+ "Signatures": {
+  "COPYING": "8177f97513213526df2cf6184d8ff986c675afb514d4e68a404010521b880643",
+  "create_linear_debug_mount.sh": "8f4684b35ac1341b846bb395aa1c41a0e53ab9e23657663653156f2b094b20ea",
+  "module-setup.sh": "c3093b6664963b5588b90508021ff5f6190f64acaec1f010720e1aad6df14929",
+  "verity-mount.sh": "3fd2cd4db532ac5337c5e263a3241939fe8d7bee5e354edcd00dab659611b47f",
+  "verity-parse.sh": "697bf7b7396acf8ac7a1aa9dd0d2cf5aaf6a7026d08778e68e877a7e8ac5cc50",
+  "verity.conf": "3633d464309a7e4de7cd3d672e6ed0970c2350f85349686baea16c6827aee864"
+ }
+}
