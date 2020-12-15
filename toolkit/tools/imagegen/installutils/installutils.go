@@ -4,7 +4,6 @@
 package installutils
 
 import (
-	"crypto/rand"
 	"fmt"
 	"os"
 	"path"
@@ -20,6 +19,7 @@ import (
 	"microsoft.com/pkggen/internal/file"
 	"microsoft.com/pkggen/internal/jsonutils"
 	"microsoft.com/pkggen/internal/logger"
+	"microsoft.com/pkggen/internal/miscutils"
 	"microsoft.com/pkggen/internal/pkgjson"
 	"microsoft.com/pkggen/internal/retry"
 	"microsoft.com/pkggen/internal/safechroot"
@@ -74,6 +74,7 @@ func CreateMountPointPartitionMap(partDevPathMap, partIDToFsTypeMap map[string]s
 func CreateInstallRoot(installRoot string, mountPointMap, mountPointToMountArgsMap map[string]string) (installMap map[string]string, err error) {
 	installMap = make(map[string]string)
 
+	logger.Log.Errorf("CreateInstallRoot")
 	// Always mount root first
 	err = mountSingleMountPoint(installRoot, rootMountPoint, mountPointMap[rootMountPoint], mountPointToMountArgsMap[rootMountPoint])
 	if err != nil {
@@ -81,8 +82,27 @@ func CreateInstallRoot(installRoot string, mountPointMap, mountPointToMountArgsM
 	}
 	installMap[rootMountPoint] = mountPointMap[rootMountPoint]
 
-	// Mount rest of the mountpoints
-	for mountPoint, device := range mountPointMap {
+	// Convert the installMap into a slice of mount points so it can be sorted
+	var remainingMounts []string
+	for mountPoint := range mountPointMap {
+		// Skip empty mount points
+		if mountPoint == "" {
+			continue
+		}
+
+		remainingMounts = append(remainingMounts, mountPoint)
+	}
+
+	// We need to make sure we sort the mount points so we don't mount things in the wrong order
+
+	// Mount the rest of the mount points
+	// This way nested mounts will be handled correctly:
+	// e.g.: /dev is mounted before /dev/pts is.
+	sort.Sort(sort.StringSlice(remainingMounts))
+	logger.Log.Errorf("%v", remainingMounts)
+	for _, mountPoint := range remainingMounts {
+		logger.Log.Errorf("%v", installMap)
+		device := mountPointMap[mountPoint]
 		if mountPoint != "" && mountPoint != rootMountPoint {
 			err = mountSingleMountPoint(installRoot, mountPoint, device, mountPointToMountArgsMap[mountPoint])
 			if err != nil {
@@ -91,6 +111,7 @@ func CreateInstallRoot(installRoot string, mountPointMap, mountPointToMountArgsM
 			installMap[mountPoint] = device
 		}
 	}
+
 	return
 }
 
@@ -116,8 +137,15 @@ func DestroyInstallRoot(installRoot string, installMap map[string]string) (err e
 	// e.g.: /dev/pts is unmounted and then /dev is.
 	sort.Sort(sort.Reverse(sort.StringSlice(allMountsToUnmount)))
 	for _, mountPoint := range allMountsToUnmount {
+		logger.Log.Errorf("Flushing %s", installMap[mountPoint])
+		err = diskutils.BlockOnDiskIO(installMap[mountPoint])
+		if err != nil {
+			logger.Log.Panicf("DestroyInstallRoot flush IO Error: %s", err.Error())
+		}
+		logger.Log.Errorf("Unmounting %s", mountPoint)
 		err = unmountSingleMountPoint(installRoot, mountPoint)
 		if err != nil {
+			logger.Log.Errorf("DestroyInstallRoot Error: %s", err.Error())
 			return
 		}
 	}
@@ -126,6 +154,7 @@ func DestroyInstallRoot(installRoot string, installMap map[string]string) (err e
 }
 
 func mountSingleMountPoint(installRoot, mountPoint, device, extraOptions string) (err error) {
+	logger.Log.Errorf("Mounting %s to %s", device, mountPoint)
 	mountPath := filepath.Join(installRoot, mountPoint)
 	err = os.MkdirAll(mountPath, os.ModePerm)
 	if err != nil {
@@ -138,6 +167,7 @@ func mountSingleMountPoint(installRoot, mountPoint, device, extraOptions string)
 
 func unmountSingleMountPoint(installRoot, mountPoint string) (err error) {
 	mountPath := filepath.Join(installRoot, mountPoint)
+	logger.Log.Errorf("Unmount %s", mountPath)
 	err = umount(mountPath)
 	return
 }
@@ -159,12 +189,16 @@ func mount(path, device, extraOptions string) (err error) {
 
 func umount(path string) (err error) {
 	const (
-		retryAttempts = 3
+		retryAttempts = 10
 		retryDuration = time.Second
 		unmountFlags  = 0
 	)
 	err = retry.Run(func() error {
-		return syscall.Unmount(path, unmountFlags)
+		innerErr := syscall.Unmount(path, unmountFlags)
+		if innerErr != nil {
+			logger.Log.Errorf("%s, %v, %s", path, unmountFlags, innerErr.Error())
+		}
+		return innerErr
 	}, retryAttempts, retryDuration)
 	return
 }
@@ -280,11 +314,11 @@ func PopulateInstallRoot(installChroot *safechroot.Chroot, packagesToInstall []s
 		return
 	}
 
-	// Keep a running total of how many packages have be installed through all the `tdnfInstall` invocations
+	// Keep a running total of how many packages have be installed through all the `TdnfInstall` invocations
 	packagesInstalled := 0
 
 	// Install filesystem package first
-	packagesInstalled, err = tdnfInstall(filesystemPkg, installRoot, packagesInstalled, totalPackages)
+	packagesInstalled, err = TdnfInstall(filesystemPkg, installRoot, packagesInstalled, totalPackages)
 	if err != nil {
 		return
 	}
@@ -301,7 +335,7 @@ func PopulateInstallRoot(installChroot *safechroot.Chroot, packagesToInstall []s
 	// Install packages one-by-one to avoid exhausting memory
 	// on low resource systems
 	for _, pkg := range packagesToInstall {
-		packagesInstalled, err = tdnfInstall(pkg, installRoot, packagesInstalled, totalPackages)
+		packagesInstalled, err = TdnfInstall(pkg, installRoot, packagesInstalled, totalPackages)
 		if err != nil {
 			return
 		}
@@ -595,6 +629,7 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 		fstabPath        = "/etc/fstab"
 		rootfsMountPoint = "/"
 		defaultOptions   = "defaults"
+		readOnlyOptions  = "ro"
 		defaultDump      = "0"
 		disablePass      = "0"
 		rootPass         = "1"
@@ -605,6 +640,9 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 
 	if mountArgs == "" {
 		options = defaultOptions
+		if diskutils.IsReadOnlyDevice(devicePath) {
+			options = fmt.Sprintf("%s,%s", options, readOnlyOptions)
+		}
 	} else {
 		options = mountArgs
 	}
@@ -614,6 +652,8 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 	// Get the block device
 	var device string
 	if diskutils.IsEncryptedDevice(devicePath) {
+		device = devicePath
+	} else if diskutils.IsReadOnlyDevice(devicePath) {
 		device = devicePath
 	} else {
 		uuid, err := GetUUID(devicePath)
@@ -638,6 +678,13 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 		logger.Log.Warnf("Failed to append to fstab file")
 		return
 	}
+
+	stdout, errout, err := shell.Execute("cat", fullFstabPath)
+	logger.Log.Warnf("FSTAB: %s", stdout)
+	if err != nil {
+		logger.Log.Error(errout)
+	}
+
 	return
 }
 
@@ -688,7 +735,7 @@ func addEntryToCrypttab(installRoot string, devicePath string, encryptedRoot dis
 // - kernelCommandLine contains additional kernel parameters which may be optionally set
 // Note: this boot partition could be different than the boot partition specified in the bootloader.
 // This boot partition specifically indicates where to find the kernel, config files, and initrd
-func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine) (err error) {
+func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot diskutils.VerityDevice) (err error) {
 	const (
 		assetGrubcfgFile = "/installer/grub2/grub.cfg"
 		grubCfgFile      = "boot/grub2/grub.cfg"
@@ -736,11 +783,23 @@ func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot disk
 		return
 	}
 
+	err = setGrubCfgReadOnlyVerityRoot(installGrubCfgFile, readOnlyRoot)
+	if err != nil {
+		logger.Log.Warnf("Failed to set verity root in grub.cfg: %v", err)
+		return
+	}
+
 	// Append any additional command line parameters
 	err = setGrubCfgAdditionalCmdLine(installGrubCfgFile, kernelCommandLine)
 	if err != nil {
 		logger.Log.Warnf("Failed to append extra command line parameterse in grub.cfg: %v", err)
 		return
+	}
+
+	stdout, errout, err := shell.Execute("cat", installGrubCfgFile)
+	logger.Log.Warnf("GRUB CFG 2: %s", stdout)
+	if err != nil {
+		logger.Log.Error(errout)
 	}
 
 	return
@@ -871,7 +930,7 @@ func createUserWithPassword(installChroot *safechroot.Chroot, user configuration
 	if user.PasswordHashed {
 		hashedPassword = user.Password
 	} else {
-		salt, err = randomString(postfixLength, alphaNumeric)
+		salt, err = miscutils.RandomString(postfixLength, alphaNumeric)
 		if err != nil {
 			return
 		}
@@ -1057,7 +1116,8 @@ func updateUserPassword(installRoot, username, password string) (err error) {
 	return
 }
 
-func tdnfInstall(packageName, installRoot string, currentPackagesInstalled, totalPackages int) (packagesInstalled int, err error) {
+// TdnfInstall installs a packge in the current environment
+func TdnfInstall(packageName, installRoot string, currentPackagesInstalled, totalPackages int) (packagesInstalled int, err error) {
 	packagesInstalled = currentPackagesInstalled
 
 	onStdout := func(args ...interface{}) {
@@ -1084,7 +1144,7 @@ func tdnfInstall(packageName, installRoot string, currentPackagesInstalled, tota
 		ReportPercentComplete(progress)
 	}
 
-	err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Warn, true, "tdnf", "install", packageName, "--installroot", installRoot, "--nogpgcheck", "--assumeyes")
+	err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Warn, true, "tdnf", "-v", "install", packageName, "--installroot", installRoot, "--nogpgcheck", "--assumeyes")
 	if err != nil {
 		logger.Log.Warnf("Failed to tdnf install: %v. Package name: %v", err, packageName)
 	}
@@ -1121,7 +1181,7 @@ func getPackagesFromJSON(file string) (pkgList PackageList, err error) {
 // - bootUUID is the UUID of the boot partition
 // Note: this boot partition could be different than the boot partition specified in the main grub config.
 // This boot partition specifically indicates where to find the main grub cfg
-func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bootType, bootUUID, bootDevPath string) (err error) {
+func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bootType, bootUUID, bootPrefix, bootDevPath string) (err error) {
 	const (
 		efiMountPoint  = "/boot/efi"
 		efiBootType    = "efi"
@@ -1139,7 +1199,7 @@ func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bo
 		}
 	case efiBootType:
 		efiPath := filepath.Join(installChroot.RootDir(), efiMountPoint)
-		err = installEfiBootloader(encryptEnabled, efiPath, bootUUID)
+		err = installEfiBootloader(encryptEnabled, efiPath, bootUUID, bootPrefix)
 		if err != nil {
 			return
 		}
@@ -1226,7 +1286,7 @@ func GetPartUUID(device string) (stdout string, err error) {
 // installRoot/boot/efi folder
 // It is expected that shim (bootx64.efi) and grub2 (grub2.efi) are installed
 // into the EFI directory via the package list installation mechanism.
-func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID string) (err error) {
+func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID, bootPrefix string) (err error) {
 	const (
 		defaultCfgFilename = "grub.cfg"
 		encryptCfgFilename = "grubEncrypt.cfg"
@@ -1255,6 +1315,13 @@ func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID string) (er
 		return
 	}
 
+	// Set the boot prefix
+	err = setGrubCfgBootPrefix(bootPrefix, grubFinalPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set bootPrefix in grub.cfg: %v", err)
+		return
+	}
+
 	// Add in encrypted volume
 	if encryptEnabled {
 		err = setGrubCfgEncryptedVolume(grubFinalPath)
@@ -1262,6 +1329,12 @@ func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID string) (er
 			logger.Log.Warnf("Failed to set encrypted volume in grub.cfg: %v", err)
 			return
 		}
+	}
+
+	stdout, errout, err := shell.Execute("cat", grubFinalPath)
+	logger.Log.Warnf("GRUB CFG 1: %s", stdout)
+	if err != nil {
+		logger.Log.Error(errout)
 	}
 
 	return
@@ -1360,6 +1433,55 @@ func setGrubCfgIMA(grubPath string, kernelCommandline configuration.KernelComman
 	return
 }
 
+// setGrubCfgReadOnlyVerityRoot populates the arguments needed to boot with a dm-verity read-only root partition
+func setGrubCfgReadOnlyVerityRoot(grubPath string, readOnlyRoot diskutils.VerityDevice) (err error) {
+	var (
+		verityMountArg          = fmt.Sprintf("rd.verityroot.devicename=%s", readOnlyRoot.MappedName)
+		verityHashArg           = fmt.Sprintf("rd.verityroot.hashtree=/%s.hashtree", readOnlyRoot.MappedName)
+		verityRootHashArg       = fmt.Sprintf("rd.verityroot.roothash=/%s.roothash", readOnlyRoot.MappedName)
+		verityRootHashSigArg    = fmt.Sprintf("rd.verityroot.roothashsig=/%s.p7", readOnlyRoot.MappedName)
+		verityFECDataArg        = fmt.Sprintf("rd.verityroot.fecdata=/%s.fec", readOnlyRoot.MappedName)
+		verityFECRootsArg       = fmt.Sprintf("rd.verityroot.fecroots=%d", readOnlyRoot.FecRoots)
+		verityErrorHandling     = fmt.Sprintf("rd.verityroot.verityerrorhandling=%s", readOnlyRoot.ErrorBehavior)
+		verityValidateOnBootArg = fmt.Sprintf("rd.verityroot.validateonboot=%v", readOnlyRoot.ValidateOnBoot)
+		verityOverlaysArg       = fmt.Sprintf("rd.verityroot.overlays=\"%s\"", strings.Join(readOnlyRoot.TmpfsOverlays, " "))
+		verityDebugMountsArg    = fmt.Sprintf("rd.verityroot.overlays_debug_mount=%s", readOnlyRoot.TmpfsOverlaysDebugMount)
+		verityPattern           = "{{.ReadOnlyVerityRoot}}"
+		verityArgs              = ""
+
+		cmdline configuration.KernelCommandLine
+	)
+
+	if readOnlyRoot.MappedName != "" {
+		// Basic set of verity arguments common to all use cases
+		verityArgs = fmt.Sprintf("%s %s %s %s %s %s %s %s",
+			verityMountArg,
+			verityHashArg,
+			verityRootHashArg,
+			verityRootHashSigArg,
+			verityErrorHandling,
+			verityValidateOnBootArg,
+			verityOverlaysArg,
+			verityDebugMountsArg,
+		)
+		// Only include the FEC arguments if we have FEC enabled
+		if readOnlyRoot.FecRoots > 0 {
+			verityArgs = fmt.Sprintf("%s %s %s", verityArgs, verityFECDataArg, verityFECRootsArg)
+		}
+		if readOnlyRoot.UseRootHashSignature {
+			verityArgs = fmt.Sprintf("%s %s", verityArgs, verityRootHashArg)
+		}
+	}
+
+	logger.Log.Debugf("Adding Verity Root ('%s') to %s", verityArgs, grubPath)
+	err = sed(verityPattern, verityArgs, cmdline.GetSedDelimeter(), grubPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set grub.cfg's IMA setting: %v", err)
+	}
+
+	return
+}
+
 func setGrubCfgLVM(grubPath, luksUUID string) (err error) {
 	const (
 		lvmPrefix  = "rd.lvm.lv="
@@ -1414,6 +1536,21 @@ func setGrubCfgBootUUID(bootUUID, grubPath string) (err error) {
 	err = sed(bootUUIDPattern, bootUUID, cmdline.GetSedDelimeter(), grubPath)
 	if err != nil {
 		logger.Log.Warnf("Failed to set grub.cfg's bootUUID: %v", err)
+		return
+	}
+	return
+}
+
+func setGrubCfgBootPrefix(bootPrefix, grubPath string) (err error) {
+	const (
+		bootPrefixPattern = "{{.BootPrefix}}"
+	)
+	var cmdline configuration.KernelCommandLine
+
+	logger.Log.Debugf("Adding BootPrefix('%s') to %s", bootPrefix, grubPath)
+	err = sed(bootPrefixPattern, bootPrefix, cmdline.GetSedDelimeter(), grubPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set grub.cfg's bootPrefix: %v", err)
 		return
 	}
 	return
@@ -1496,26 +1633,6 @@ func createRawArtifact(workDirPath, devPath, name string) (err error) {
 	}
 
 	return shell.ExecuteLive(squashErrors, "dd", ddArgs...)
-}
-
-// randomString generates a random string of the length specified
-// using the provided legalCharacters.  crypto.rand is more secure
-// than math.rand and does not need to be seeded.
-func randomString(length int, legalCharacters string) (output string, err error) {
-	b := make([]byte, length)
-	_, err = rand.Read(b)
-	if err != nil {
-		return
-	}
-
-	count := byte(len(legalCharacters))
-	for i := range b {
-		idx := b[i] % count
-		b[i] = legalCharacters[idx]
-	}
-
-	output = string(b)
-	return
 }
 
 // isRunningInHyperV checks if the program is running in a Hyper-V Virtual Machine.

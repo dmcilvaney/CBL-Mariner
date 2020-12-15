@@ -65,6 +65,58 @@ func TestShouldErrorForMissingFile(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestShouldFailForUntaggedEncryptionDeviceMapperRoot(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Copy the current disks, then mangle one by removing the expected dmroot flag
+	badDisks := append([]Disk{}, testConfig.Disks...)
+	badDiskParts := append([]Partition{}, badDisks[0].Partitions...)
+	badDisks[0].Partitions = badDiskParts
+	testConfig.Disks = badDisks
+
+	// Clear the flags for the root
+	testConfig.GetDiskPartByID(testConfig.SystemConfigs[0].GetRootPartitionSetting().ID).Flags = []string{}
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: [Partition] 'MyRootfs' must include 'dmroot' device mapper root flag in [Flags] for [SystemConfig] 'SmallerDisk's root partition since it uses [ReadOnlyVerityRoot] or [Encryption]", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: [Partition] 'MyRootfs' must include 'dmroot' device mapper root flag in [Flags] for [SystemConfig] 'SmallerDisk's root partition since it uses [ReadOnlyVerityRoot] or [Encryption]", err.Error())
+}
+
+func TestShouldFailDeviceMapperWithNoRoot(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Clear the disks
+	testConfig.Disks = []Disk{}
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: can't find a [Disk] [Partition] to match with [PartitionSetting] 'MyRootfs'", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: can't find a [Disk] [Partition] to match with [PartitionSetting] 'MyRootfs'", err.Error())
+
+	// Now again with no configured partitions
+	testConfig.SystemConfigs = append([]SystemConfig{}, testConfig.SystemConfigs...)
+	testConfig.SystemConfigs[0].PartitionSettings = []PartitionSetting{}
+
+	err = testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: can't find a root ('/') [PartitionSetting] to work with either [ReadOnlyVerityRoot] or [Encryption]", err.Error())
+
+	// remarshal runs IsValid() on [SystemConfig] prior to running it on [Config], so we get a different error message here.
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: failed to parse [SystemConfig]: invalid [ReadOnlyVerityRoot] or [Encryption]: must have a partition mounted at '/'", err.Error())
+
+}
+
 var expectedConfiguration Config = Config{
 	Disks: []Disk{
 		{
@@ -109,7 +161,10 @@ var expectedConfiguration Config = Config{
 					FsType: "fat32",
 				},
 				{
-					ID:     "MyRootfs",
+					ID: "MyRootfs",
+					Flags: []string{
+						"dmroot",
+					},
 					Start:  uint64(9),
 					End:    uint64(1024),
 					FsType: "ext4",
@@ -238,6 +293,15 @@ var expectedConfiguration Config = Config{
 			Encryption: RootEncryption{
 				Enable:   true,
 				Password: "EncryptPassphrase123",
+			},
+			ReadOnlyVerityRoot: ReadOnlyVerityRoot{
+				Enable:                       false,
+				Name:                         "verity_root_fs",
+				ErrorCorrectionEnable:        true,
+				ErrorCorrectionEncodingRoots: 2,
+				RootHashSignatureEnable:      false,
+				VerityErrorBehavior:          "restart",
+				TmpfsOverlays:                nil,
 			},
 		},
 		{
