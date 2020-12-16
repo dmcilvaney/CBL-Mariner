@@ -1,0 +1,101 @@
+{
+    "Disks": [
+        {
+            "PartitionTableType": "gpt",
+            "MaxSize": 5000,
+            "Artifacts": [
+                {
+                    "Name": "read-only",
+                    "Type": "vhdx"
+                },
+                {
+                    "Name": "read-only-raw",
+                    "Type": "raw"
+                }
+            ],
+            "Partitions": [
+                {
+                    "ID": "efi",
+                    "Flags": [
+                        "esp",
+                        "boot"
+                    ],
+                    "Start": 1,
+                    "End": 9,
+                    "FsType": "fat32"
+                },
+                {
+                    "ID": "boot",
+                    "Start": 9,
+                    "End": 400,
+                    "FsType": "ext4"
+                },
+                {
+                    "ID": "rootfs",
+                    "Start": 400,
+                    "End": 4000,
+                    "FsType": "ext4",
+                    "Flags": [
+                        "dmroot"
+                    ]
+                },
+                {
+                    "ID": "data",
+                    "Start": 4000,
+                    "End": 0,
+                    "FsType": "ext4"
+                }
+            ]
+        }
+    ],
+    "SystemConfigs": [
+        {
+            "Name": "ReadOnly",
+            "BootType": "efi",
+            "PartitionSettings": [
+                {
+                    "ID": "boot",
+                    "MountPoint": "/boot"
+                },
+                {
+                    "ID": "efi",
+                    "MountPoint": "/boot/efi",
+                    "MountOptions" : "umask=0077"
+                },
+                {
+                    "ID": "rootfs",
+                    "MountPoint": "/"
+                },
+                {
+                    "ID": "data",
+                    "MountPoint": "/data"
+                }
+            ],
+            "PackageLists": [
+                "packagelists/hyperv-packages.json",
+                "packagelists/core-packages-image.json",
+                "packagelists/read-only-root-packages.json"
+            ],
+            "KernelOptions": {
+                "default": "kernel"
+            },
+            "ReadOnlyVerityRoot": {
+                "Enable": true,
+                "TmpfsOverlays": [
+                    "/var"
+                ],
+                "TmpfsOverlayDebugEnabled": false
+            },
+            "KernelCommandLine": {
+                "ExtraCommandLine": "console=tty0 console=ttyS0=9800 rd.shell=0 rd.emergency=reboot"
+            },
+            "Hostname": "cbl-mariner",
+            "Users": [
+                {
+                    "Name": "root",
+                    "Password": "p@ssw0rd"
+                }
+            ]
+        }
+    ]
+}

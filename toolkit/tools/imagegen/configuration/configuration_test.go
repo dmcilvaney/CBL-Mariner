@@ -295,6 +295,15 @@ var expectedConfiguration Config = Config{
 				Password: "EncryptPassphrase123",
 			},
 			RemoveRpmDb: false,
+			ReadOnlyVerityRoot: ReadOnlyVerityRoot{
+				Enable:                       false,
+				Name:                         "verity_root_fs",
+				ErrorCorrectionEnable:        true,
+				ErrorCorrectionEncodingRoots: 2,
+				RootHashSignatureEnable:      false,
+				VerityErrorBehavior:          "restart",
+				TmpfsOverlays:                nil,
+			},
 		},
 		{
 			Name: "BiggerDiskA",

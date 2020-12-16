@@ -27,6 +27,7 @@ type SystemConfig struct {
 	Users              []User              `json:"Users"`
 	Encryption         RootEncryption      `json:"Encryption"`
 	RemoveRpmDb        bool                `json:"RemoveRpmDb`
+	ReadOnlyVerityRoot ReadOnlyVerityRoot  `json:"ReadOnlyVerityRoot"`
 }
 
 // GetRootPartitionSetting returns a pointer to the partition setting describing the disk which
