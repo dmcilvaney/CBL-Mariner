@@ -45,7 +45,7 @@ var (
 		Partitions: []Partition{
 			{
 				ID: "MyBoot",
-				Flags: []string{
+				Flags: []PartitionFlag{
 					"esp",
 					"boot",
 				},

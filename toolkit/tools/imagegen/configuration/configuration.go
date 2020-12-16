@@ -23,22 +23,6 @@ type Artifact struct {
 	Type        string `json:"Type"`
 }
 
-// Partition defines the size, name and file system type
-// for a partition.
-// "Start" and "End" fields define the offset from the beginning of the disk in MBs.
-// An "End" value of 0 will determine the size of the partition using the next
-// partition's start offset or the value defined by "MaxSize", if this is the last
-// partition on the disk.
-type Partition struct {
-	FsType    string     `json:"FsType"`
-	ID        string     `json:"ID"`
-	Name      string     `json:"Name"`
-	End       uint64     `json:"End"`
-	Start     uint64     `json:"Start"`
-	Flags     []string   `json:"Flags"`
-	Artifacts []Artifact `json:"Artifacts"`
-}
-
 // RawBinary allow the users to specify a binary they would
 // like to copy byte-for-byte onto the disk.
 type RawBinary struct {
@@ -52,14 +36,6 @@ type RawBinary struct {
 type TargetDisk struct {
 	Type  string `json:"Type"`
 	Value string `json:"Value"`
-}
-
-// PartitionSetting holds the mounting information for each partition.
-type PartitionSetting struct {
-	RemoveDocs   bool   `json:"RemoveDocs"`
-	ID           string `json:"ID"`
-	MountOptions string `json:"MountOptions"`
-	MountPoint   string `json:"MountPoint"`
 }
 
 // PostInstallScript defines a script to be ran after other installation
@@ -92,12 +68,51 @@ type Config struct {
 	DefaultSystemConfig *SystemConfig // A system configuration with the "IsDefault" field set or the first system configuration if there is no explicit default.
 }
 
+// GetDiskPartByID returns the disk object with the desired ID, nil if no disk found
+func (c *Config) GetDiskPartByID(ID string) (disk *Partition) {
+	for i, d := range c.Disks {
+		for j, p := range d.Partitions {
+			if p.ID == ID {
+				return &c.Disks[i].Partitions[j]
+			}
+		}
+	}
+	return nil
+}
+
+// checkDeviceMapperFlags checks if Encryption and read-only roots have a the required 'dmroot' flag.
+// They need the root partition to have a specific flag so we can find the partition and handle it
+// before we mount it.
+func checkDeviceMapperFlags(config *Config) (err error) {
+	for _, sysConfig := range config.SystemConfigs {
+		if sysConfig.ReadOnlyVerityRoot.Enable || sysConfig.Encryption.Enable {
+			rootPartSetting := sysConfig.GetRootPartitionSetting()
+			if rootPartSetting == nil {
+				return fmt.Errorf("can't find a root ('/') [PartitionSetting] to work with either [ReadOnlyVerityRoot] or [Encryption]")
+			}
+			rootDiskPart := config.GetDiskPartByID(rootPartSetting.ID)
+			if rootDiskPart == nil {
+				return fmt.Errorf("can't find a [Disk] [Partition] to match with [PartitionSetting] '%s'", rootPartSetting.ID)
+			}
+			if !rootDiskPart.HasFlag("dmroot") {
+				return fmt.Errorf("[Partition] '%s' must include 'dmroot' device mapper root flag in [Flags] for [SystemConfig] '%s's root partition since it uses [ReadOnlyVerityRoot] or [Encryption]", rootDiskPart.ID, sysConfig.Name)
+			}
+		}
+	}
+	return
+}
+
 // IsValid returns an error if the Config is not valid
 func (c *Config) IsValid() (err error) {
 	for _, disk := range c.Disks {
 		if err = disk.IsValid(); err != nil {
 			return fmt.Errorf("invalid [Disks]: %w", err)
 		}
+	}
+	// Check the flags for the disks
+	err = checkDeviceMapperFlags(c)
+	if err != nil {
+		return fmt.Errorf("A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: %w", err)
 	}
 
 	if len(c.SystemConfigs) == 0 {

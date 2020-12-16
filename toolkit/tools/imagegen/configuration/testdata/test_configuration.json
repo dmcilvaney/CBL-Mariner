@@ -45,7 +45,10 @@
                     "ID": "MyRootfs",
                     "Start": 9,
                     "End": 1024,
-                    "FsType": "ext4"
+                    "FsType": "ext4",
+                    "Flags": [
+                        "dmroot"
+                    ]
                 }
             ]
         },
