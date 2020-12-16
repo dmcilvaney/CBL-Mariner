@@ -72,7 +72,8 @@ fetch-external-image-packages: $(image_external_package_cache_summary)
 validate-image-config: $(validate-config)
 $(STATUS_FLAGS_DIR)/validate-image-config%.flag: $(go-imageconfigvalidator) $(depend_CONFIG_FILE) $(CONFIG_FILE) $(config_other_files)
 	$(go-imageconfigvalidator) \
-		--input=$(CONFIG_FILE) && \
+		--input=$(CONFIG_FILE) \
+		--dir=$(CONFIG_BASE_DIR) && \
 	touch $@
 
 
