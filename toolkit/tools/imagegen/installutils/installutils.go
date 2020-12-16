@@ -638,6 +638,7 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 		fstabPath        = "/etc/fstab"
 		rootfsMountPoint = "/"
 		defaultOptions   = "defaults"
+		readOnlyOptions  = "ro"
 		defaultDump      = "0"
 		disablePass      = "0"
 		rootPass         = "1"
@@ -648,6 +649,9 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 
 	if mountArgs == "" {
 		options = defaultOptions
+		if diskutils.IsReadOnlyDevice(devicePath) {
+			options = fmt.Sprintf("%s,%s", options, readOnlyOptions)
+		}
 	} else {
 		options = mountArgs
 	}
@@ -657,6 +661,8 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 	// Get the block device
 	var device string
 	if diskutils.IsEncryptedDevice(devicePath) {
+		device = devicePath
+	} else if diskutils.IsReadOnlyDevice(devicePath) {
 		device = devicePath
 	} else {
 		uuid, err := GetUUID(devicePath)
@@ -731,7 +737,7 @@ func addEntryToCrypttab(installRoot string, devicePath string, encryptedRoot dis
 // - kernelCommandLine contains additional kernel parameters which may be optionally set
 // Note: this boot partition could be different than the boot partition specified in the bootloader.
 // This boot partition specifically indicates where to find the kernel, config files, and initrd
-func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine) (err error) {
+func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot diskutils.VerityDevice) (err error) {
 	const (
 		assetGrubcfgFile = "/installer/grub2/grub.cfg"
 		grubCfgFile      = "boot/grub2/grub.cfg"
@@ -776,6 +782,12 @@ func InstallGrubCfg(installRoot, rootDevice, bootUUID string, encryptedRoot disk
 	err = setGrubCfgIMA(installGrubCfgFile, kernelCommandLine)
 	if err != nil {
 		logger.Log.Warnf("Failed to set ima_policy in grub.cfg: %v", err)
+		return
+	}
+
+	err = setGrubCfgReadOnlyVerityRoot(installGrubCfgFile, readOnlyRoot)
+	if err != nil {
+		logger.Log.Warnf("Failed to set verity root in grub.cfg: %v", err)
 		return
 	}
 
@@ -1527,6 +1539,55 @@ func setGrubCfgIMA(grubPath string, kernelCommandline configuration.KernelComman
 
 	logger.Log.Debugf("Adding ImaPolicy('%s') to %s", ima, grubPath)
 	err = sed(imaPattern, ima, kernelCommandline.GetSedDelimeter(), grubPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set grub.cfg's IMA setting: %v", err)
+	}
+
+	return
+}
+
+// setGrubCfgReadOnlyVerityRoot populates the arguments needed to boot with a dm-verity read-only root partition
+func setGrubCfgReadOnlyVerityRoot(grubPath string, readOnlyRoot diskutils.VerityDevice) (err error) {
+	var (
+		verityMountArg          = fmt.Sprintf("rd.verityroot.devicename=%s", readOnlyRoot.MappedName)
+		verityHashArg           = fmt.Sprintf("rd.verityroot.hashtree=/%s.hashtree", readOnlyRoot.MappedName)
+		verityRootHashArg       = fmt.Sprintf("rd.verityroot.roothash=/%s.roothash", readOnlyRoot.MappedName)
+		verityRootHashSigArg    = fmt.Sprintf("rd.verityroot.roothashsig=/%s.p7", readOnlyRoot.MappedName)
+		verityFECDataArg        = fmt.Sprintf("rd.verityroot.fecdata=/%s.fec", readOnlyRoot.MappedName)
+		verityFECRootsArg       = fmt.Sprintf("rd.verityroot.fecroots=%d", readOnlyRoot.FecRoots)
+		verityErrorHandling     = fmt.Sprintf("rd.verityroot.verityerrorhandling=%s", readOnlyRoot.ErrorBehavior)
+		verityValidateOnBootArg = fmt.Sprintf("rd.verityroot.validateonboot=%v", readOnlyRoot.ValidateOnBoot)
+		verityOverlaysArg       = fmt.Sprintf("rd.verityroot.overlays=\"%s\"", strings.Join(readOnlyRoot.TmpfsOverlays, " "))
+		verityDebugMountsArg    = fmt.Sprintf("rd.verityroot.overlays_debug_mount=%s", readOnlyRoot.TmpfsOverlaysDebugMount)
+		verityPattern           = "{{.ReadOnlyVerityRoot}}"
+		verityArgs              = ""
+
+		cmdline configuration.KernelCommandLine
+	)
+
+	if readOnlyRoot.MappedName != "" {
+		// Basic set of verity arguments common to all use cases
+		verityArgs = fmt.Sprintf("%s %s %s %s %s %s %s %s",
+			verityMountArg,
+			verityHashArg,
+			verityRootHashArg,
+			verityRootHashSigArg,
+			verityErrorHandling,
+			verityValidateOnBootArg,
+			verityOverlaysArg,
+			verityDebugMountsArg,
+		)
+		// Only include the FEC arguments if we have FEC enabled
+		if readOnlyRoot.FecRoots > 0 {
+			verityArgs = fmt.Sprintf("%s %s %s", verityArgs, verityFECDataArg, verityFECRootsArg)
+		}
+		if readOnlyRoot.UseRootHashSignature {
+			verityArgs = fmt.Sprintf("%s %s", verityArgs, verityRootHashArg)
+		}
+	}
+
+	logger.Log.Debugf("Adding Verity Root ('%s') to %s", verityArgs, grubPath)
+	err = sed(verityPattern, verityArgs, cmdline.GetSedDelimeter(), grubPath)
 	if err != nil {
 		logger.Log.Warnf("Failed to set grub.cfg's IMA setting: %v", err)
 	}
