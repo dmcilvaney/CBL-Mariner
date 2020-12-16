@@ -323,11 +323,11 @@ func PopulateInstallRoot(installChroot *safechroot.Chroot, packagesToInstall []s
 		return
 	}
 
-	// Keep a running total of how many packages have be installed through all the `tdnfInstall` invocations
+	// Keep a running total of how many packages have be installed through all the `TdnfInstall` invocations
 	packagesInstalled := 0
 
 	// Install filesystem package first
-	packagesInstalled, err = tdnfInstall(filesystemPkg, installRoot, packagesInstalled, totalPackages)
+	packagesInstalled, err = TdnfInstall(filesystemPkg, installRoot, packagesInstalled, totalPackages)
 	if err != nil {
 		return
 	}
@@ -344,7 +344,7 @@ func PopulateInstallRoot(installChroot *safechroot.Chroot, packagesToInstall []s
 	// Install packages one-by-one to avoid exhausting memory
 	// on low resource systems
 	for _, pkg := range packagesToInstall {
-		packagesInstalled, err = tdnfInstall(pkg, installRoot, packagesInstalled, totalPackages)
+		packagesInstalled, err = TdnfInstall(pkg, installRoot, packagesInstalled, totalPackages)
 		if err != nil {
 			return
 		}
@@ -1208,7 +1208,8 @@ func updateUserPassword(installRoot, username, password string) (err error) {
 	return
 }
 
-func tdnfInstall(packageName, installRoot string, currentPackagesInstalled, totalPackages int) (packagesInstalled int, err error) {
+// TdnfInstall installs a packge in the current environment
+func TdnfInstall(packageName, installRoot string, currentPackagesInstalled, totalPackages int) (packagesInstalled int, err error) {
 	packagesInstalled = currentPackagesInstalled
 
 	onStdout := func(args ...interface{}) {
@@ -1235,7 +1236,7 @@ func tdnfInstall(packageName, installRoot string, currentPackagesInstalled, tota
 		ReportPercentComplete(progress)
 	}
 
-	err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Warn, true, "tdnf", "install", packageName, "--installroot", installRoot, "--nogpgcheck", "--assumeyes")
+	err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Warn, true, "tdnf", "-v", "install", packageName, "--installroot", installRoot, "--nogpgcheck", "--assumeyes")
 	if err != nil {
 		logger.Log.Warnf("Failed to tdnf install: %v. Package name: %v", err, packageName)
 	}
