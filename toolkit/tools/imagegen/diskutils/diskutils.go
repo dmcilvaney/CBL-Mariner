@@ -217,6 +217,65 @@ func SetupLoopbackDevice(diskFilePath string) (devicePath string, err error) {
 	return
 }
 
+// BlockOnDiskIO waits until all outstanding operations against a disk complete.
+func BlockOnDiskIO(diskDevPath string) (err error) {
+
+	logger.Log.Infof("Flushing all IO to disk for %s", diskDevPath)
+	shell.Execute("sync")
+
+	stdout, stderr, err := shell.Execute("lsblk", "--output", "MAJ:MIN", "--noheadings", "--nodeps", diskDevPath)
+	if err != nil {
+		logger.Log.Errorf("Failed to get disk major/minor ID: %s, %s", stderr, err.Error())
+		return
+	}
+	// lsblk includes whitespace both before an after output, trim it off.
+	diskIDs := strings.Split(strings.TrimSpace(stdout), ":")
+	if len(diskIDs) != 2 {
+		return fmt.Errorf("couldn't find disk IDs for %s (%s)", diskDevPath, stdout)
+	}
+	maj := diskIDs[0]
+	min := diskIDs[1]
+
+	outstandingOps := ""
+	logger.Log.Tracef("Searching /proc/diskstats for %s:%s", maj, min)
+	for busy := true; busy; busy = (outstandingOps != "0") {
+		outstandingOps = ""
+		foundEntry := false
+
+		// Find the entry with Major#, Minor#, ..., IOs which matches our disk
+		onStdout := func(args ...interface{}) {
+			const (
+				majIdx            = 0
+				minIdx            = 1
+				outstandingOpsIdx = 11
+			)
+
+			// Bail early if we already found the entry
+			if foundEntry {
+				return
+			}
+
+			line := args[0].(string)
+			deviceStatsFields := strings.Fields(line)
+			if maj == deviceStatsFields[majIdx] && min == deviceStatsFields[minIdx] {
+				outstandingOps = deviceStatsFields[outstandingOpsIdx]
+				foundEntry = true
+			}
+		}
+
+		err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Error, true, "cat", "/proc/diskstats")
+		if err != nil {
+			logger.Log.Error(stderr)
+			return
+		}
+		if !foundEntry {
+			return fmt.Errorf("couldn't find entry for '%s' in /proc/diskstats", diskDevPath)
+		}
+		logger.Log.Debug("Outstanding operations on " + diskDevPath + ": " + outstandingOps)
+	}
+	return
+}
+
 // DetachLoopbackDevice detaches the specified disk
 func DetachLoopbackDevice(diskDevPath string) (err error) {
 	logger.Log.Infof("Detaching Loopback Device Path: %v", diskDevPath)
