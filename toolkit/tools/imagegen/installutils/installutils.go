@@ -1247,7 +1247,7 @@ func getPackagesFromJSON(file string) (pkgList PackageList, err error) {
 // - bootUUID is the UUID of the boot partition
 // Note: this boot partition could be different than the boot partition specified in the main grub config.
 // This boot partition specifically indicates where to find the main grub cfg
-func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bootType, bootUUID, bootDevPath string) (err error) {
+func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bootType, bootUUID, bootPrefix, bootDevPath string) (err error) {
 	const (
 		efiMountPoint  = "/boot/efi"
 		efiBootType    = "efi"
@@ -1265,7 +1265,7 @@ func InstallBootloader(installChroot *safechroot.Chroot, encryptEnabled bool, bo
 		}
 	case efiBootType:
 		efiPath := filepath.Join(installChroot.RootDir(), efiMountPoint)
-		err = installEfiBootloader(encryptEnabled, efiPath, bootUUID)
+		err = installEfiBootloader(encryptEnabled, efiPath, bootUUID, bootPrefix)
 		if err != nil {
 			return
 		}
@@ -1352,7 +1352,7 @@ func GetPartUUID(device string) (stdout string, err error) {
 // installRoot/boot/efi folder
 // It is expected that shim (bootx64.efi) and grub2 (grub2.efi) are installed
 // into the EFI directory via the package list installation mechanism.
-func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID string) (err error) {
+func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID, bootPrefix string) (err error) {
 	const (
 		defaultCfgFilename = "grub.cfg"
 		encryptCfgFilename = "grubEncrypt.cfg"
@@ -1378,6 +1378,13 @@ func installEfiBootloader(encryptEnabled bool, installRoot, bootUUID string) (er
 	err = setGrubCfgBootUUID(bootUUID, grubFinalPath)
 	if err != nil {
 		logger.Log.Warnf("Failed to set bootUUID in grub.cfg: %v", err)
+		return
+	}
+
+	// Set the boot prefix
+	err = setGrubCfgBootPrefix(bootPrefix, grubFinalPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set bootPrefix in grub.cfg: %v", err)
 		return
 	}
 
@@ -1555,6 +1562,21 @@ func setGrubCfgBootUUID(bootUUID, grubPath string) (err error) {
 	err = sed(bootUUIDPattern, bootUUID, cmdline.GetSedDelimeter(), grubPath)
 	if err != nil {
 		logger.Log.Warnf("Failed to set grub.cfg's bootUUID: %v", err)
+		return
+	}
+	return
+}
+
+func setGrubCfgBootPrefix(bootPrefix, grubPath string) (err error) {
+	const (
+		bootPrefixPattern = "{{.BootPrefix}}"
+	)
+	var cmdline configuration.KernelCommandLine
+
+	logger.Log.Debugf("Adding BootPrefix('%s') to %s", bootPrefix, grubPath)
+	err = sed(bootPrefixPattern, bootPrefix, cmdline.GetSedDelimeter(), grubPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set grub.cfg's bootPrefix: %v", err)
 		return
 	}
 	return
