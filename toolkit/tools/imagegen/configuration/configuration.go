@@ -86,6 +86,11 @@ func (c *Config) GetDiskPartByID(ID string) (disk *Partition) {
 func checkDeviceMapperFlags(config *Config) (err error) {
 	for _, sysConfig := range config.SystemConfigs {
 		if sysConfig.ReadOnlyVerityRoot.Enable || sysConfig.Encryption.Enable {
+			if len(config.Disks) == 0 {
+				logger.Log.Warnf("[ReadOnlyVerityRoot] or [Encryption] is enabled, but no partitions are listed as part of System Config '%s'. This is only valid for ISO installers", sysConfig.Name)
+				continue
+			}
+
 			rootPartSetting := sysConfig.GetRootPartitionSetting()
 			if rootPartSetting == nil {
 				return fmt.Errorf("can't find a root ('/') [PartitionSetting] to work with either [ReadOnlyVerityRoot] or [Encryption]")

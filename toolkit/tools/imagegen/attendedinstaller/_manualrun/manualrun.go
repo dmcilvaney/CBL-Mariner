@@ -28,8 +28,12 @@ func main() {
 			configuration.SystemConfig{
 				Name: "Core",
 				PackageLists: []string{
-					"core-packages-image.json",
-					"hyperv.json",
+					"packagelists/core-packages-image.json",
+					"packagelists/hyperv-packages.json",
+				},
+				KernelOptions: map[string]string{
+					"default": "kernel",
+					"hyperv":  "kernel-hyperv",
 				},
 				AdditionalFiles: map[string]string{
 					"/etc/resolv.conf": "/etc/resolv.conf",
@@ -51,6 +55,10 @@ func main() {
 					"core-packages-image.json",
 					"developer-packages.json",
 					"hyperv.json",
+				},
+				KernelOptions: map[string]string{
+					"default": "kernel",
+					"hyperv":  "kernel-hyperv",
 				},
 				AdditionalFiles: map[string]string{
 					"/etc/resolv.conf": "/etc/resolv.conf",

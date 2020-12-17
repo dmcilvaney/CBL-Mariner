@@ -91,8 +91,8 @@ func TestShouldFailDeviceMapperWithNoRoot(t *testing.T) {
 	var checkedConfig Config
 	testConfig := expectedConfiguration
 
-	// Clear the disks
-	testConfig.Disks = []Disk{}
+	// Clear the disks, and one empty one
+	testConfig.Disks = []Disk{{}}
 
 	err := testConfig.IsValid()
 	assert.Error(t, err)
@@ -110,10 +110,9 @@ func TestShouldFailDeviceMapperWithNoRoot(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, "A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: can't find a root ('/') [PartitionSetting] to work with either [ReadOnlyVerityRoot] or [Encryption]", err.Error())
 
-	// remarshal runs IsValid() on [SystemConfig] prior to running it on [Config], so we get a different error message here.
 	err = remarshalJSON(testConfig, &checkedConfig)
 	assert.Error(t, err)
-	assert.Equal(t, "failed to parse [Config]: failed to parse [SystemConfig]: invalid [ReadOnlyVerityRoot] or [Encryption]: must have a partition mounted at '/'", err.Error())
+	assert.Equal(t, "failed to parse [Config]: A config in [SystemConfigs] enables a device mapper based root (Encryption or Read-Only), but no partition is flagged for it: can't find a root ('/') [PartitionSetting] to work with either [ReadOnlyVerityRoot] or [Encryption]", err.Error())
 
 }
 

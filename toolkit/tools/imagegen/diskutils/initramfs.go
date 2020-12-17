@@ -39,6 +39,7 @@ func CreateInitramfs(initramfsPath string) (initramfs InitramfsMount, err error)
 
 // OpenInitramfs makes an existing initramfs editable
 func OpenInitramfs(initramfsPath string) (initramfs InitramfsMount, err error) {
+	logger.Log.Tracef("Opening '%s'", initramfsPath)
 	inputFile, err := os.Open(initramfsPath)
 	if err != nil {
 		return
@@ -60,12 +61,16 @@ func OpenInitramfs(initramfsPath string) (initramfs InitramfsMount, err error) {
 
 	var bytesIO int64
 	var nextFileHeader *cpio.Header
+
+	logger.Log.Tracef("Reading files from initramfs '%s'", initramfsPath)
 	for {
 		var linkPayload []byte
 
 		nextFileHeader, err = cpioReader.Next()
+		logger.Log.Tracef("Processing %s", nextFileHeader.Name)
 		if err == io.EOF {
 			err = nil
+			logger.Log.Tracef("Done with initramfs")
 			break
 		}
 		if err != nil {

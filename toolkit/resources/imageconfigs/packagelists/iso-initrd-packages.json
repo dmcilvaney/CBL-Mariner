@@ -37,7 +37,6 @@
         "libgcc",
         "libstdc++",
         "lvm2",
-        "kernel",
         "lua",
         "ncurses",
         "ncurses-term",
