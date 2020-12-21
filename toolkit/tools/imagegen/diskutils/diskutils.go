@@ -217,6 +217,65 @@ func SetupLoopbackDevice(diskFilePath string) (devicePath string, err error) {
 	return
 }
 
+// BlockOnDiskIO waits until all outstanding operations against a disk complete.
+func BlockOnDiskIO(diskDevPath string) (err error) {
+
+	logger.Log.Infof("Flushing all IO to disk for %s", diskDevPath)
+	shell.Execute("sync")
+
+	stdout, stderr, err := shell.Execute("lsblk", "--output", "MAJ:MIN", "--noheadings", "--nodeps", diskDevPath)
+	if err != nil {
+		logger.Log.Errorf("Failed to get disk major/minor ID: %s, %s", stderr, err.Error())
+		return
+	}
+	// lsblk includes whitespace both before an after output, trim it off.
+	diskIDs := strings.Split(strings.TrimSpace(stdout), ":")
+	if len(diskIDs) != 2 {
+		return fmt.Errorf("couldn't find disk IDs for %s (%s)", diskDevPath, stdout)
+	}
+	maj := diskIDs[0]
+	min := diskIDs[1]
+
+	outstandingOps := ""
+	logger.Log.Tracef("Searching /proc/diskstats for %s:%s", maj, min)
+	for busy := true; busy; busy = (outstandingOps != "0") {
+		outstandingOps = ""
+		foundEntry := false
+
+		// Find the entry with Major#, Minor#, ..., IOs which matches our disk
+		onStdout := func(args ...interface{}) {
+			const (
+				majIdx            = 0
+				minIdx            = 1
+				outstandingOpsIdx = 11
+			)
+
+			// Bail early if we already found the entry
+			if foundEntry {
+				return
+			}
+
+			line := args[0].(string)
+			deviceStatsFields := strings.Fields(line)
+			if maj == deviceStatsFields[majIdx] && min == deviceStatsFields[minIdx] {
+				outstandingOps = deviceStatsFields[outstandingOpsIdx]
+				foundEntry = true
+			}
+		}
+
+		err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Error, true, "cat", "/proc/diskstats")
+		if err != nil {
+			logger.Log.Error(stderr)
+			return
+		}
+		if !foundEntry {
+			return fmt.Errorf("couldn't find entry for '%s' in /proc/diskstats", diskDevPath)
+		}
+		logger.Log.Debug("Outstanding operations on " + diskDevPath + ": " + outstandingOps)
+	}
+	return
+}
+
 // DetachLoopbackDevice detaches the specified disk
 func DetachLoopbackDevice(diskDevPath string) (err error) {
 	logger.Log.Infof("Detaching Loopback Device Path: %v", diskDevPath)
@@ -228,11 +287,7 @@ func DetachLoopbackDevice(diskDevPath string) (err error) {
 }
 
 // CreatePartitions creates partitions on the specified disk according to the disk config
-func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryption configuration.RootEncryption) (partDevPathMap map[string]string, partIDToFsTypeMap map[string]string, encryptedRoot EncryptedRootDevice, err error) {
-	const (
-		rootFsID = "rootfs"
-	)
-
+func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot) (partDevPathMap map[string]string, partIDToFsTypeMap map[string]string, encryptedRoot EncryptedRootDevice, readOnlyRoot VerityDevice, err error) {
 	partDevPathMap = make(map[string]string)
 	partIDToFsTypeMap = make(map[string]string)
 
@@ -262,18 +317,29 @@ func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryptio
 		partDevPath, err := CreateSinglePartition(diskDevPath, partitionNumber, partitionTableType.String(), partition)
 		if err != nil {
 			logger.Log.Warnf("Failed to create single partition")
-			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, err
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 		}
 
 		partFsType, err := FormatSinglePartition(partDevPath, partition)
 		if err != nil {
 			logger.Log.Warnf("Failed to format partition")
-			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, err
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 		}
 
-		if rootEncryption.Enable && partition.ID == rootFsID {
+		if rootEncryption.Enable && partition.HasFlag(configuration.PartitionFlagDeviceMapperRoot) {
 			encryptedRoot, err = encryptRootPartition(partDevPath, partition, rootEncryption)
+			if err != nil {
+				logger.Log.Warnf("Failed to initialize encrypted root")
+				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+			}
 			partDevPathMap[partition.ID] = GetEncryptedRootVolMapping()
+		} else if readOnlyRootConfig.Enable && partition.HasFlag(configuration.PartitionFlagDeviceMapperRoot) {
+			readOnlyRoot, err = PrepReadOnlyDevice(partDevPath, partition, readOnlyRootConfig)
+			if err != nil {
+				logger.Log.Warnf("Failed to initialize read only root")
+				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+			}
+			partDevPathMap[partition.ID] = readOnlyRoot.MappedDevice
 		} else {
 			partDevPathMap[partition.ID] = partDevPath
 		}
@@ -339,12 +405,14 @@ func InitializeSinglePartition(diskDevPath string, partitionNumber int, partitio
 		args := []string{diskDevPath, "--script", "set", partitionNumberStr}
 		var flagToSet string
 		switch flag {
-		case "esp":
+		case configuration.PartitionFlagESP:
 			flagToSet = "esp"
-		case "grub", "bios-grub":
+		case configuration.PartitionFlagGrub, configuration.PartitionFlagBiosGrub:
 			flagToSet = "bios_grub"
-		case "boot":
+		case configuration.PartitionFlagBoot:
 			flagToSet = "boot"
+		case configuration.PartitionFlagDeviceMapperRoot:
+			//Ignore, only used for internal tooling
 		default:
 			return partDevPath, fmt.Errorf("Partition %v - Unknown partition flag: %v", partitionNumber, flag)
 		}
@@ -446,14 +514,14 @@ func SystemBootType() (bootType string) {
 
 // BootPartitionConfig returns the partition flags and mount point that should be used
 // for a given boot type.
-func BootPartitionConfig(bootType string) (mountPoint, mountOptions string, flags []string, err error) {
+func BootPartitionConfig(bootType string) (mountPoint, mountOptions string, flags []configuration.PartitionFlag, err error) {
 	switch bootType {
 	case "efi":
-		flags = []string{"esp", "boot"}
+		flags = []configuration.PartitionFlag{configuration.PartitionFlagESP, configuration.PartitionFlagBoot}
 		mountPoint = "/boot/efi"
 		mountOptions = "umask=0077"
 	case "legacy":
-		flags = []string{"grub"}
+		flags = []configuration.PartitionFlag{configuration.PartitionFlagGrub}
 		mountPoint = ""
 		mountOptions = ""
 	default:
