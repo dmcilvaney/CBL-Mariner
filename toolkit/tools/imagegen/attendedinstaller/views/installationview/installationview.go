@@ -148,6 +148,7 @@ func (iv *InstallationView) applyConfiguration(sysConfig *configuration.SystemCo
 	sysConfig.PackageLists = selectedConfig.PackageLists
 	sysConfig.KernelOptions = selectedConfig.KernelOptions
 	sysConfig.KernelCommandLine = selectedConfig.KernelCommandLine
+	sysConfig.ReadOnlyVerityRoot = selectedConfig.ReadOnlyVerityRoot
 	sysConfig.AdditionalFiles = selectedConfig.AdditionalFiles
 	sysConfig.PostInstallScripts = selectedConfig.PostInstallScripts
 }

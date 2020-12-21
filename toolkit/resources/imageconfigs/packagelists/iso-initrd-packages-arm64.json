@@ -2,6 +2,7 @@
     "packages": [
         "pam",
         "attr",
+        "awk",
         "bash",
         "bzip2",
         "cifs-utils",
@@ -57,6 +58,7 @@
         "tdnf",
         "usbutils",
         "util-linux",
+        "veritysetup",
         "vim",
         "words",
         "xz",

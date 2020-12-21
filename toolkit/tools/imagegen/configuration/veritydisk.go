@@ -67,6 +67,12 @@ var (
 	}
 )
 
+// GetDefaultReadOnlyVerityRoot returns a copy of the default verity root config
+func GetDefaultReadOnlyVerityRoot() (defaultVal ReadOnlyVerityRoot) {
+	defaultVal = defaultReadOnlyVerityRoot
+	return defaultVal
+}
+
 // IsValid returns an error if the ReadOnlyVerityRoot is not valid
 func (v *ReadOnlyVerityRoot) IsValid() (err error) {
 	// The default disabled config does not generate a default name, only check if we have explicitly
@@ -112,7 +118,7 @@ func (v *ReadOnlyVerityRoot) UnmarshalJSON(b []byte) (err error) {
 	type IntermediateTypeReadOnlyVerityRoot ReadOnlyVerityRoot
 
 	// Populate non-standard default values
-	*v = defaultReadOnlyVerityRoot
+	*v = GetDefaultReadOnlyVerityRoot()
 
 	err = json.Unmarshal(b, (*IntermediateTypeReadOnlyVerityRoot)(v))
 	if err != nil {

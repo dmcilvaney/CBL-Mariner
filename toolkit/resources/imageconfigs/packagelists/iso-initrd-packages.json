@@ -2,6 +2,7 @@
     "packages": [
         "pam",
         "attr",
+        "awk",
         "bash",
         "bzip2",
         "calamares",
@@ -59,6 +60,7 @@
         "tdnf",
         "usbutils",
         "util-linux",
+        "veritysetup",
         "vim",
         "words",
         "xz",
