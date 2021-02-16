@@ -49,7 +49,7 @@
 %endif
 
 Summary:        Contains the GNU compiler collection
-Name:           %{_cross_name}-gcc-bootstrap
+Name:           %{_cross_name}-gcc-bootstrap2
 Version:        9.1.0
 Release:        11%{?dist}
 License:        GPLv2+
@@ -63,8 +63,9 @@ Source2:        http://ftp.gnu.org/gnu/gmp/gmp-6.1.2.tar.xz
 Source3:        https://ftp.gnu.org/gnu/mpc/mpc-1.1.0.tar.gz
 BuildRequires:  %{_cross_name}-binutils
 BuildRequires:  %{_cross_name}-kernel-headers
+BuildRequires:  %{_cross_name}-glibc-bootstrap
 AutoReqProv:    no
-Conflicts:      %{_cross_name}-gcc-bootstrap2
+Conflicts:      %{_cross_name}-gcc-bootstrap
 Conflicts:      %{_cross_name}-gcc
 #%%if %%{with_check}
 #BuildRequires:  autogen
@@ -161,15 +162,14 @@ which includes the C and C++ compilers.
 
 %prep
 %setup -q -n gcc-%{version}
-tar -xf %{SOURCE1}
-ln -s mpfr-4.0.1 gcc-%{version}/mpfr
-tar -xf %{SOURCE2}
-ln -s gmp-6.1.2 gcc-%{version}/gmp
-tar -xf %{SOURCE3}
-ln -s mpc-1.1.0 gcc-%{version}/mpc
 # disable no-pie for gcc binaries
 sed -i '/^NO_PIE_CFLAGS = /s/@NO_PIE_CFLAGS@//' gcc/Makefile.in
 install -vdm 755 %{_builddir}/%{name}-build
+TEMP_SYSROOT="%{_builddir}/temp_sysroot/"
+cp -r "%{_cross_sysroot}" "$TEMP_SYSROOT"
+# This should reference our %{_includedir} probably? Why the missmatch between /include and /usr/include?
+mkdir -p "$TEMP_SYSROOT/usr/include"
+ln -s "$TEMP_SYSROOT/include" "$TEMP_SYSROOT/usr/include"
 
 %build
 CFLAGS="`echo " %{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
@@ -194,12 +194,12 @@ cd %{_builddir}/%{name}-build
             --enable-linker-build-id \
             --enable-plugin \
             --enable-default-pie \
-            --with-sysroot=%{_cross_sysroot} \
-            --with-native-system-header-dir=%{_includedir}
-make %{?_smp_mflags} all-gcc
+            --with-sysroot=$TEMP_SYSROOT \
+            --with-build-sysroot=$TEMP_SYSROOT
+make %{?_smp_mflags} all-target-libgcc
 
 %install
-make %{?_smp_mflags} DESTDIR=%{buildroot} install-gcc
+make %{?_smp_mflags} DESTDIR=%{buildroot} install-target-libgcc
 
 rm -rf %{buildroot}%{_cross_prefix}%{_infodir}
 %find_lang %{name} --all-name
@@ -278,7 +278,7 @@ cat %{buildroot}%{_sysconfdir}/ld.so.conf.d/%{name}.conf
 # %%defattr(-,root,root)
 # %%{_cross_prefix}%%{_lib64dir}/libstdc++.so.*
 # # Switched these from _datarootdir to _datadir
-# %%dir %{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx
+# %%dir %%{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx
 # %%{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx/*
 
 # %%files -n libstdc++-devel
