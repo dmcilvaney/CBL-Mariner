@@ -83,12 +83,12 @@ Provides:       %{name}-common = %{version}-%{release}
 Provides:       %{_cross_name}-rtld(GNU_HASH)
 Provides:       %{_crossdir}%{_tuple}/sbin/ldconfig
 BuildRequires:  %{_cross_name}-binutils
-BuildRequires:  binutils
 BuildRequires:  %{_cross_name}-kernel-headers
 BuildRequires:  %{_cross_name}-gcc-bootstrap
 BuildRequires:  %{_cross_name}-gcc-bootstrap2
 AutoReqProv:    no
 Conflicts:      %{_cross_name}-glibc
+Conflicts:      %{_cross_name}-glibc-bootstrap2
 ExcludeArch:    armv7 ppc i386 i686
 
 %description
