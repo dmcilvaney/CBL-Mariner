@@ -61,10 +61,12 @@ Source0:        https://ftp.gnu.org/gnu/gcc/%{name}-%{version}/gcc-%{version}.ta
 Source1:        https://ftp.gnu.org/gnu/mpfr/mpfr-4.0.1.tar.gz
 Source2:        http://ftp.gnu.org/gnu/gmp/gmp-6.1.2.tar.xz
 Source3:        https://ftp.gnu.org/gnu/mpc/mpc-1.1.0.tar.gz
+Patch0:         090_all_pr55930-dependency-tracking.patch
+# Only applies to the Power9 ISA
+Patch1:         CVE-2019-15847.nopatch
 BuildRequires:  %{_cross_name}-binutils
 BuildRequires:  %{_cross_name}-kernel-headers
 AutoReqProv:    no
-Conflicts:      %{_cross_name}-gcc-bootstrap2
 Conflicts:      %{_cross_name}-gcc
 #%%if %%{with_check}
 #BuildRequires:  autogen
@@ -161,15 +163,18 @@ which includes the C and C++ compilers.
 
 %prep
 %setup -q -n gcc-%{version}
+%patch0 -p1
+# disable no-pie for gcc binaries
+sed -i '/^NO_PIE_CFLAGS = /s/@NO_PIE_CFLAGS@//' gcc/Makefile.in
+
+install -vdm 755 %{_builddir}/%{name}-build
+cd %{_builddir}
 tar -xf %{SOURCE1}
 ln -s mpfr-4.0.1 gcc-%{version}/mpfr
 tar -xf %{SOURCE2}
 ln -s gmp-6.1.2 gcc-%{version}/gmp
 tar -xf %{SOURCE3}
 ln -s mpc-1.1.0 gcc-%{version}/mpc
-# disable no-pie for gcc binaries
-sed -i '/^NO_PIE_CFLAGS = /s/@NO_PIE_CFLAGS@//' gcc/Makefile.in
-install -vdm 755 %{_builddir}/%{name}-build
 
 %build
 CFLAGS="`echo " %{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
@@ -199,9 +204,11 @@ cd %{_builddir}/%{name}-build
 make %{?_smp_mflags} all-gcc
 
 %install
+cd %{_builddir}/%{name}-build
 make %{?_smp_mflags} DESTDIR=%{buildroot} install-gcc
 
 rm -rf %{buildroot}%{_cross_prefix}%{_infodir}
+cd ../gcc-%{version}
 %find_lang %{name} --all-name
 
 # Add the /opt/cross libs to the ldcache
@@ -278,7 +285,7 @@ cat %{buildroot}%{_sysconfdir}/ld.so.conf.d/%{name}.conf
 # %%defattr(-,root,root)
 # %%{_cross_prefix}%%{_lib64dir}/libstdc++.so.*
 # # Switched these from _datarootdir to _datadir
-# %%dir %{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx
+# %%dir %%{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx
 # %%{_cross_prefix}%%{_datadir}/gcc-%%{version}/python/libstdcxx/*
 
 # %%files -n libstdc++-devel
