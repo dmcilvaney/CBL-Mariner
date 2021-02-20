@@ -181,8 +181,11 @@ tar -xf %{SOURCE3}
 ln -s mpc-1.1.0 gcc-%{version}/mpc
 
 %build
-CFLAGS="`echo " %{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
-CXXFLAGS="`echo " %{build_cxxflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
+# What flags do we want here?
+CFLAGS=""
+CXXFLAGS=""
+#CFLAGS="`echo " %%{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
+#CXXFLAGS="`echo " %%{build_cxxflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
 export CFLAGS
 export CXXFLAGS
 
