@@ -5,6 +5,7 @@ package rpm
 
 import (
 	"fmt"
+	"runtime"
 	"strings"
 
 	"microsoft.com/pkggen/internal/file"
@@ -22,7 +23,7 @@ const (
 	// QueryBuiltRPMHeadersArgument specifies that only rpm packages that would be built from a given spec should be queried.
 	QueryBuiltRPMHeadersArgument = "--builtrpms"
 
-	// TargetArgument
+	// TargetArgument specifies to build for a target platform (i.e., aarch64-mariner-linux)
 	TargetArgument = "--target"
 
 	// DistTagDefine specifies the dist tag option for rpm tool commands
@@ -198,14 +199,34 @@ func QueryPackage(packageFile, queryFormat string, defines map[string]string, ex
 }
 
 // BuildRPMFromSRPM builds an RPM from the given SRPM file
-func BuildRPMFromSRPM(srpmFile string, defines map[string]string, extraArgs ...string) (err error) {
+func BuildRPMFromSRPM(srpmFile, outArch string, defines map[string]string, extraArgs ...string) (err error) {
 	const (
 		queryFormat  = ""
 		squashErrors = true
+		vendor       = "mariner"
+		os           = "linux"
 	)
 
 	extraArgs = append(extraArgs, "--rebuild", "--nodeps")
 
+	// build arch is the arch of the build machine
+	// host arch is the arch of the machine that will run the resulting binary
+	// target arch is the arch of the machine that the resulting binary will emit (relevant for toolchains)
+	buildArch, err := GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
+	logger.Log.Debugf("Go Native Arch (%s)", runtime.GOARCH)
+	logger.Log.Debugf("Build Arch (%s)", buildArch)
+	logger.Log.Debugf("Host Arch (%s)", outArch)
+	logger.Log.Debugf("Target Arch (%s)", outArch)
+
+	if buildArch != outArch {
+		tuple := outArch + "-" + vendor + "-" + os
+		logger.Log.Debugf("Applying Target Tuple (%s)", tuple)
+		extraArgs = append(extraArgs, TargetArgument, tuple)
+	}
 	args := formatCommandArgs(extraArgs, srpmFile, queryFormat, defines)
 	return shell.ExecuteLive(squashErrors, rpmBuildProgram, args...)
 }
