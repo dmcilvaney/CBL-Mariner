@@ -1,5 +1,6 @@
 %global security_hardening nofortify
-%define _use_internal_dependency_generator 0
+%global debug_package %{nil}
+%global set_build_flags %{nil}
 
 # Globals which should be in a macro file.
 # These should be set programatically in the future.
@@ -177,16 +178,13 @@ tar -xf %{SOURCE3}
 ln -s mpc-1.1.0 gcc-%{version}/mpc
 
 %build
-# What flags do we want here?
-CFLAGS=""
-CXXFLAGS=""
+# What flags do we want here? Clearing with '%%global set_build_flags %%{nil}' at start of file.
 #CFLAGS="`echo " %%{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
 #CXXFLAGS="`echo " %%{build_cxxflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
-export CFLAGS
-export CXXFLAGS
 
-export glibcxx_cv_c99_math_cxx98=yes glibcxx_cv_c99_math_cxx11=yes
-SED=sed \
+# export glibcxx_cv_c99_math_cxx98=yes glibcxx_cv_c99_math_cxx11=yes
+# SED=sed \
+
 # Ideally we would like to model this after the %%configure macro in the future.
 cd %{_builddir}/%{name}-build
 ../gcc-%{version}/configure \

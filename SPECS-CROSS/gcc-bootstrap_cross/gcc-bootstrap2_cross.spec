@@ -1,5 +1,6 @@
 %global security_hardening nofortify
 %global debug_package %{nil}
+%global set_build_flags %{nil}
 
 # Globals which should be in a macro file.
 # These should be set programatically in the future.
@@ -181,16 +182,12 @@ tar -xf %{SOURCE3}
 ln -s mpc-1.1.0 gcc-%{version}/mpc
 
 %build
-# What flags do we want here?
-CFLAGS=""
-CXXFLAGS=""
+# What flags do we want here? Clearing with '%%global set_build_flags %%{nil}' at start of file.
 #CFLAGS="`echo " %%{build_cflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
 #CXXFLAGS="`echo " %%{build_cxxflags} " | sed 's/-Werror=format-security/-Wno-error=format-security/'`"
-export CFLAGS
-export CXXFLAGS
 
-export glibcxx_cv_c99_math_cxx98=yes glibcxx_cv_c99_math_cxx11=yes
-SED=sed \
+# export glibcxx_cv_c99_math_cxx98=yes glibcxx_cv_c99_math_cxx11=yes
+# SED=sed \
 
 TEMP_SYSROOT="%{_builddir}/temp_sysroot/"
 cp -r "%{_cross_sysroot}" "$TEMP_SYSROOT"
