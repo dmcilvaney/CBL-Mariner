@@ -52,7 +52,7 @@
 %endif
 
 Summary:        Main C library
-Name:           %{_cross_name}-glibc-bootstrap
+Name:           %{_cross_name}-glibc-bootstrap2
 Version:        2.28
 Release:        14%{?dist}
 License:        LGPLv2+
@@ -85,9 +85,10 @@ Provides:       %{_crossdir}%{_tuple}/sbin/ldconfig
 BuildRequires:  %{_cross_name}-binutils
 BuildRequires:  %{_cross_name}-kernel-headers
 BuildRequires:  %{_cross_name}-gcc-bootstrap
+BuildRequires:  %{_cross_name}-gcc-bootstrap2
 AutoReqProv:    no
 Conflicts:      %{_cross_name}-glibc
-Conflicts:      %{_cross_name}-glibc-bootstrap
+Conflicts:      %{_cross_name}-glibc-bootstrap2
 ExcludeArch:    armv7 ppc i386 i686
 
 %description
@@ -162,32 +163,34 @@ sed -i 's/\\$$(pwd)/`pwd`/' timezone/Makefile
 %patch7 -p1
 
 install -vdm 755 %{_builddir}/%{name}-build
+
+# Don't need these since we aren't doing generators?
 # do not try to explicitly provide GLIBC_PRIVATE versioned libraries
-%define __find_provides %{_builddir}/%{name}-%{version}/find_provides.sh
-%define __find_requires %{_builddir}/%{name}-%{version}/find_requires.sh
+# %define __find_provides %{_builddir}/%{name}-%%{version}/find_provides.sh
+# %define __find_requires %{_builddir}/%{name}-%%{version}/find_requires.sh
 
-# create find-provides and find-requires script in order to ignore GLIBC_PRIVATE errors
-cat > find_provides.sh << _EOF
-#! /bin/sh
-if [ -d /tools ]; then
-/tools/lib/rpm/find-provides | grep -v GLIBC_PRIVATE
-else
-%{_lib}/rpm/find-provides | grep -v GLIBC_PRIVATE
-fi
-exit 0
-_EOF
-chmod +x find_provides.sh
+# # create find-provides and find-requires script in order to ignore GLIBC_PRIVATE errors
+# cat > find_provides.sh << _EOF
+# #! /bin/sh
+# if [ -d /tools ]; then
+# /tools/lib/rpm/find-provides | grep -v GLIBC_PRIVATE
+# else
+# %%{_lib}/rpm/find-provides | grep -v GLIBC_PRIVATE
+# fi
+# exit 0
+# _EOF
+# chmod +x find_provides.sh
 
-cat > find_requires.sh << _EOF
-#! /bin/sh
-if [ -d /tools ]; then
-/tools/lib/rpm/find-requires %{buildroot} %{glibc_target_cpu} | grep -v GLIBC_PRIVATE
-else
-%{_lib}/rpm/find-requires %{buildroot} %{glibc_target_cpu} | grep -v GLIBC_PRIVATE
-fi
-_EOF
-chmod +x find_requires.sh
-#___EOF
+# cat > find_requires.sh << _EOF
+# #! /bin/sh
+# if [ -d /tools ]; then
+# /tools/lib/rpm/find-requires %{buildroot} %%{glibc_target_cpu} | grep -v GLIBC_PRIVATE
+# else
+# %{_lib}/rpm/find-requires %{buildroot} %%{glibc_target_cpu} | grep -v GLIBC_PRIVATE
+# fi
+# _EOF
+# chmod +x find_requires.sh
+# #___EOF
 
 %build
 # What flags do we want here?
@@ -217,12 +220,7 @@ cd %{_builddir}/%{name}-build
             libc_cv_forced_unwind=yes \
             --disable-werror
 
-make %{?_smp_mflags} DESTDIR=$TEMP_SYSROOT install-bootstrap-headers=yes install-headers
-make %{?_smp_mflags} csu/subdir_lib
-# Depending on the state of the sysroot, /lib may already exist
-mkdir -p "$TEMP_SYSROOT/%{_libdir}"
-install csu/crt1.o csu/crti.o csu/crtn.o "$TEMP_SYSROOT/%{_libdir}"
-%{_cross_name}-gcc -nostdlib -nostartfiles -shared -x c /dev/null -o "$TEMP_SYSROOT%{_libdir}/libc.so"
+make %{?_smp_mflags} DESTDIR=$TEMP_SYSROOT
 
 # Sometimes we have false "out of memory" make error
 # just rerun/continue make to workaroung it.
@@ -230,29 +228,30 @@ install csu/crt1.o csu/crti.o csu/crtn.o "$TEMP_SYSROOT/%{_libdir}"
 
 %install
 cd %{_builddir}/%{name}-build
-make %{?_smp_mflags} DESTDIR="%{buildroot}%{_cross_sysroot}" install-bootstrap-headers=yes install-headers
-touch %{buildroot}%{_cross_sysroot}%{_includedir}/gnu/stubs.h
-mkdir %{buildroot}%{_cross_sysroot}/%{_libdir}
-install csu/crt1.o csu/crti.o csu/crtn.o ../temp_sysroot/%{_libdir}/libc.so %{buildroot}%{_cross_sysroot}/%{_libdir}
+make %{?_smp_mflags} DESTDIR="%{buildroot}%{_cross_sysroot}" install
 
 # #       Do not remove static libs
-# pushd %%{_builddir}/glibc-build
 # #       Create directories
 # make install_root=%%{buildroot} install
-# install -vdm 755 %%{buildroot}%%{_sysconfdir}/ld.so.conf.d
-# install -vdm 755 %%{buildroot}%%{_var}/cache/nscd
-# install -vdm 755 %%{buildroot}%%{_libdir}/locale
-# cp -v ../%%{name}-%%{version}/nscd/nscd.conf %%{buildroot}%%{_sysconfdir}/nscd.conf
-# #       Install locale generation script and config file
+
+# We probably don't want configs in our sysroot?
+# install -vdm 755 %{buildroot}%{_sysconfdir}/ld.so.conf.d
+# install -vdm 755 %{buildroot}%{_var}/cache/nscd
+# install -vdm 755 %{buildroot}%{_libdir}/locale
+# cp -v ../glibc-%{version}/nscd/nscd.conf %{buildroot}%{_cross_sysroot}%{_sysconfdir}/nscd.conf
+
+#       Install locale generation script and config file
+# Omitting locale, will need to include sources for this from base spec
 # cp -v %%{SOURCE2} %%{buildroot}%%{_sysconfdir}
 # cp -v %%{SOURCE1} %%{buildroot}/sbin
-# #       Remove unwanted cruft
-# rm -rf %%{buildroot}%%{_infodir}
-# #       Install configuration files
 
-# Spaces should not be used in nsswitch.conf in the begining of new line
-# Only tab should be used as it expects the same in source code.
-# Otherwise "altfiles" will not be added. which may cause dbus.service failure
+#       Remove unwanted cruft
+rm -rf %{buildroot}%{_cross_sysroot}%{_infodir}
+#       Install configuration files
+
+# # Spaces should not be used in nsswitch.conf in the begining of new line
+# # Only tab should be used as it expects the same in source code.
+# # Otherwise "altfiles" will not be added. which may cause dbus.service failure
 # cat > %{buildroot}%{_sysconfdir}/nsswitch.conf <<- "EOF"
 # #       Begin /etc/nsswitch.conf
 
@@ -269,27 +268,43 @@ install csu/crt1.o csu/crti.o csu/crtn.o ../temp_sysroot/%{_libdir}/libc.so %{bu
 # 	rpc: files
 # #       End /etc/nsswitch.conf
 # EOF
-# cat > %{buildroot}%{_sysconfdir}/ld.so.conf <<- "EOF"
+
+# # Replace this with ours?
+# cat > %%{buildroot}%%{_sysconfdir}/ld.so.conf <<- "EOF"
 # #       Begin /etc/ld.so.conf
-# 	%{_prefix}/local/lib
+# 	%%{_prefix}/local/lib
 # 	/opt/lib
-# 	include %{_sysconfdir}/ld.so.conf.d/*.conf
+# 	include %%{_sysconfdir}/ld.so.conf.d/*.conf
 # EOF
-# popd
-#%find_lang %{name} --all-name
+# Add the /opt/cross libs to the ldcache
+# mkdir -p %%{buildroot}%%{_sysconfdir}/ld.so.conf.d/
+# echo %%{buildroot}%%{_sysconfdir}/ld.so.conf.d/%%{name}.conf
+# cat > %%{buildroot}%%{_sysconfdir}/ld.so.conf.d/%%{name}.conf <<EOF
+# %%{_cross_prefix}%%{_libdir}
+# %%{_cross_prefix}%%{_lib64dir}
+# %%{_cross_prefix}%%{_libexecdir}
+# EOF
+# cat %%{buildroot}%%{_sysconfdir}/ld.so.conf.d/%{name}.conf
+
+#popd
+
+cd ../glibc-%{version}
+%find_lang %{name} --all-name
+
+# Omitting locale, will need to include sources for this from base spec
 # pushd localedata
 # # Generate out of locale-archive an (en_US.) UTF-8 locale
-# mkdir -p %{buildroot}%{_lib}/locale
-# I18NPATH=. GCONV_PATH=../../glibc-build/iconvdata LC_ALL=C ../../glibc-build/locale/localedef --no-archive --prefix=%{buildroot} -A ../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
-# mv %{buildroot}%{_lib}/locale/en_US.utf8 %{buildroot}%{_lib}/locale/en_US.UTF-8
+# mkdir -p %{buildroot}%%{_lib}/locale
+# I18NPATH=. GCONV_PATH=../../glibc-build/iconvdata LC_ALL=C ../../glibc-build/locale/localedef --no-archive --prefix=%%{buildroot} -A ../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
+# mv %{buildroot}%{_lib}/locale/en_US.utf8 %{buildroot}%%{_lib}/locale/en_US.UTF-8
 # popd
 # to do not depend on /bin/bash
-# sed -i 's@#! /bin/bash@#! /bin/sh@' %{buildroot}%{_bindir}/ldd
-# sed -i 's@#!/bin/bash@#!/bin/sh@' %{buildroot}%{_bindir}/tzselect
+# sed -i 's@#! /bin/bash@#! /bin/sh@' %{buildroot}%%{_bindir}/ldd
+# sed -i 's@#!/bin/bash@#!/bin/sh@' %{buildroot}%%{_bindir}/tzselect
 
-# %check
-# cd %{_builddir}/glibc-build
-# make %{?_smp_mflags} check ||:
+# %%check
+# cd %%{_builddir}/glibc-build
+# make %%{?_smp_mflags} check ||:
 # # These 2 persistant false positives are OK
 # # XPASS for: elf/tst-protected1a and elf/tst-protected1b
 # [ `grep ^XPASS tests.sum | wc -l` -ne 2 -a `grep "^XPASS: elf/tst-protected1[ab]" tests.sum | wc -l` -ne 2 ] && exit 1 ||:
@@ -310,15 +325,93 @@ install csu/crt1.o csu/crti.o csu/crtn.o ../temp_sysroot/%{_libdir}/libc.so %{bu
 # # check for exact 'n' failures
 # [ `grep ^FAIL tests.sum | wc -l` -ne $n ] && exit 1 ||:
 
-# %post -p /sbin/ldconfig
-# %postun -p /sbin/ldconfig
+%post -p /sbin/ldconfig
+%postun -p /sbin/ldconfig
 
-%files
+%files -f %{name}.lang
 %defattr(-,root,root)
 %license LICENSES
-%{_cross_sysroot}%{_libdir}/*.so
-%{_cross_sysroot}%{_libdir}/*.o
+#%%{_libdir}/locale/*
+#%%dir %%{_sysconfdir}/ld.so.conf.d
+#%%config(noreplace) %%{_cross_sysroot}%%{_sysconfdir}/nsswitch.conf
+# Should we be using sysroot ld, or local ld?
+#%%config(noreplace) %%{_sysconfdir}/ld.so.conf
+%config(noreplace) %{_cross_sysroot}%{_sysconfdir}/rpc
+#%%config(missingok,noreplace) %%{_sysconfdir}/ld.so.cache
+#%%config %%{_sysconfdir}/locale-gen.conf
+
+# Converted to libdir from lib64dir
+%{_cross_sysroot}/%{_libdir}/*
+#%%ifarch aarch64
+# All our libs are in here... do we omit it?
+#%%exclude /lib
+#%%endif
+
+#%%exclude /lib64/libpcprofile.so
+
+#%%{_lib64dir}/*.so
+%{_cross_sysroot}/sbin/ldconfig
+#%%{_cross_sysroot}/sbin/locale-gen.sh
+%{_cross_sysroot}%{_sbindir}/zdump
+%{_cross_sysroot}%{_sbindir}/zic
+%{_cross_sysroot}%{_sbindir}/iconvconfig
+%{_cross_sysroot}%{_bindir}/*
+%{_cross_sysroot}%{_libexecdir}/*
+#%%{_cross_sysroot}%%{_datadir}/i18n/charmaps/UTF-8.gz
+#%%{_cross_sysroot}%%{_datadir}/i18n/charmaps/ISO-8859-1.gz
+#%%{_cross_sysroot}%%{_datadir}/i18n/locales/en_US
+
+%{_cross_sysroot}%{_datadir}/locale/locale.alias
+# This doesn't exist?
+%exclude %{_cross_sysroot}%{_localstatedir}/lib/nss_db/Makefile
+# Only have one package, don't split these off
+#%%exclude %%{_cross_sysroot}%%{_bindir}/mtrace
+#%%exclude %%{_cross_sysroot}%%{_bindir}/pcprofiledump
+#%%exclude %%{_cross_sysroot}%%{_bindir}/xtrace
+
+# %%files iconv
+# %%defattr(-,root,root)
+# Converted to libdir from lib64dir, overlap with previous entry
+#%%{_cross_sysroot}%%{_libdir}/gconv/*
+
+#%%files tools
+#%%defattr(-,root,root)
+#%%{_cross_sysroot}%%{_bindir}/mtrace
+#%%{_cross_sysroot}%%{_bindir}/pcprofiledump
+#%%{_cross_sysroot}%%{_bindir}/xtrace
+%{_cross_sysroot}%{_sbindir}/sln
+# Converted to libdir from lib64dir
+# Already listed
+#%%{_cross_sysroot}%%{_libdir}/audit/*
+#%%{_cross_sysroot}%%{_libdir}/libpcprofile.so
+
+#%%files nscd
+#%%defattr(-,root,root)
+#%%config(noreplace) %%{_cross_sysroot}%%{_sysconfdir}/nscd.conf
+%{_cross_sysroot}%{_sbindir}/nscd
+#Not creating the cache
+#%%dir %%{_cross_sysroot}%%{_localstatedir}/cache/nscd
+
+#%%files i18n
+#%%defattr(-,root,root)
+%{_cross_sysroot}%{_datadir}/i18n/charmaps/*.gz
+%{_cross_sysroot}%{_datadir}/i18n/locales/*
+# Single package, don't split
+#%%exclude %%{_datadir}/i18n/charmaps/UTF-8.gz
+#%%exclude %%{_datadir}/i18n/charmaps/ISO-8859-1.gz
+#%%exclude %%{_datadir}/i18n/locales/en_US
+
+#%%files devel
+#%%defattr(-,root,root)
+# TODO: Excluding for now to remove dependency on PERL
+# /usr/bin/mtrace
+# These already listed
+#%%{_cross_sysroot}%%{_libdir}/*.a
+#%%{_cross_sysroot}%%{_libdir}/*.o
 %{_cross_sysroot}%{_includedir}/*
+
+#%%files -f %%{name}.lang lang
+#%%defattr(-,root,root)
 
 %changelog
 * Thu Dec 10 2020 Joe Schmitt <joschmit@microsoft.com> - 2.28-14
