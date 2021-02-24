@@ -187,11 +187,11 @@ func addEdgeHelper(g *PkgGraph, pkg1 PkgNode, pkg2 PkgNode) (err error) {
 		n1, n2   *PkgNode
 	)
 
-	lu1, err = g.FindExactPkgNodeFromPkg(pkg1.VersionedPkg)
+	lu1, err = g.FindExactPkgNodeFromPkg(pkg1.VersionedPkg, "test_arch")
 	if lu1 == nil || err != nil {
 		return fmt.Errorf("couldn't find %s (%v)", pkg1.String(), lu1)
 	}
-	lu2, err = g.FindExactPkgNodeFromPkg(pkg2.VersionedPkg)
+	lu2, err = g.FindExactPkgNodeFromPkg(pkg2.VersionedPkg, "test_arch")
 	if lu2 == nil || err != nil {
 		return fmt.Errorf("couldn't find %s (%v)", pkg2.String(), lu2)
 	}
@@ -231,7 +231,7 @@ func checkTestGraph(t *testing.T, g *PkgGraph) {
 	assert.Equal(t, len(buildNodes), len(g.AllBuildNodes()))
 
 	// Check the correctness of the disconnected components rooted in pkgARun, and pkgC2Run
-	a, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"})
+	a, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"}, "test_arch")
 	assert.NoError(t, err)
 	component1 := []*PkgNode{
 		pkgARun,
@@ -253,7 +253,7 @@ func checkTestGraph(t *testing.T, g *PkgGraph) {
 	}
 	assert.Equal(t, len(component1), len(g.AllNodesFrom(a.RunNode)))
 
-	c2, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"})
+	c2, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"}, "test_arch")
 	assert.NoError(t, err)
 	component2 := []*PkgNode{
 		pkgC2Run,
@@ -337,11 +337,11 @@ func TestDOTID(t *testing.T) {
 	for _, n := range allNodes {
 		assert.NotPanics(t, func() { n.DOTID() })
 	}
-	assert.Equal(t, "A-1-RUN<Meta> (ID=0,TYPE=Run,STATE=Meta)", pkgARun.DOTID())
-	assert.Equal(t, "D--REMOTE<Unresolved> (ID=0,TYPE=Remote,STATE=Unresolved)", pkgD1Unresolved.DOTID())
+	assert.Equal(t, "A-1-test_arch-RUN<Meta> (ID=0,TYPE=Run,STATE=Meta)", pkgARun.DOTID())
+	assert.Equal(t, "D--test_arch-REMOTE<Unresolved> (ID=0,TYPE=Remote,STATE=Unresolved)", pkgD1Unresolved.DOTID())
 
 	g := NewPkgGraph()
-	goal, err := g.AddGoalNode("test", nil, false)
+	goal, err := g.AddGoalNode("test", nil, "test_arch", false)
 	assert.NoError(t, err)
 	assert.Equal(t, "test (ID=0,TYPE=Goal,STATE=Meta)", goal.DOTID())
 
@@ -451,7 +451,7 @@ func TestGoodVersionCond(t *testing.T) {
 		assert.NoError(t, err)
 		assert.NotNil(t, n)
 
-		lookup, err := g.FindBestPkgNode(ver)
+		lookup, err := g.FindBestPkgNode(ver, "test_arch")
 		assert.NoError(t, err)
 		assert.NotNil(t, lookup)
 		assert.True(t, n.Equal(lookup.RunNode))
@@ -477,7 +477,7 @@ func TestLookupNodeBasic(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	lNode, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"})
+	lNode, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"}, "test_arch")
 
 	assert.Equal(t, nil, err)
 	assert.NotEqual(t, lNode, nil)
@@ -494,7 +494,7 @@ func TestLookupNodeExact(t *testing.T) {
 	assert.NotNil(t, g)
 
 	for _, pkg := range pkgVersions {
-		lNode, err := g.FindExactPkgNodeFromPkg(pkg)
+		lNode, err := g.FindExactPkgNodeFromPkg(pkg, "test_arch")
 		assert.NoError(t, err)
 		assert.NotNil(t, lNode)
 		assert.NotNil(t, lNode.RunNode)
@@ -512,7 +512,7 @@ func TestLookupNoVersion(t *testing.T) {
 	n := buildUnresolvedNodeHelper(&pkgjson.PackageVer{Name: "test"})
 	_, err := addNodeToGraphHelper(g, n)
 	assert.NoError(t, err)
-	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "test"})
+	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "test"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, lu)
 	assert.True(t, lu.RunNode.Equal(n))
@@ -526,24 +526,24 @@ func TestConditionalLookupBasic(t *testing.T) {
 	assert.NotNil(t, g)
 
 	// Highest version should be C2 (ver3-4)
-	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-3", Condition: ">"})
+	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-3", Condition: ">"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, lu)
 	assert.True(t, lu.RunNode.Equal(pkgC2Run))
 
 	// Need lower than 3-4, we should get C with ver3-3
-	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-4", Condition: "<"})
+	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-4", Condition: "<"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, lu)
 	assert.True(t, lu.RunNode.Equal(pkgCRun))
 
 	// Best is D2, which is ver: <=2
-	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "D", Version: "1"})
+	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "D", Version: "1"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, lu)
 	assert.True(t, lu.RunNode.Equal(pkgD2Unresolved))
 
-	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "D", Version: "2.1"})
+	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "D", Version: "2.1"}, "test_arch")
 	assert.NoError(t, err)
 	assert.Nil(t, lu)
 }
@@ -561,7 +561,8 @@ func TestConditionalLookupMulti(t *testing.T) {
 		Condition:  ">=",
 		Version:    "1",
 		SCondition: "<",
-		SVersion:   "3"})
+		SVersion:   "3"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(pkgD2Unresolved))
 
@@ -570,7 +571,8 @@ func TestConditionalLookupMulti(t *testing.T) {
 		Condition:  ">=",
 		Version:    "2",
 		SCondition: "<",
-		SVersion:   "3"})
+		SVersion:   "3"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(pkgD2Unresolved))
 
@@ -579,7 +581,8 @@ func TestConditionalLookupMulti(t *testing.T) {
 		Condition:  ">=",
 		Version:    "2",
 		SCondition: "<=",
-		SVersion:   "3"})
+		SVersion:   "3"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(pkgD3Unresolved))
 
@@ -588,7 +591,8 @@ func TestConditionalLookupMulti(t *testing.T) {
 		Condition:  "<",
 		Version:    "3",
 		SCondition: ">",
-		SVersion:   "3"})
+		SVersion:   "3"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.Nil(t, lu)
 }
@@ -604,14 +608,16 @@ func TestConditionalLookupMultiMissingFirst(t *testing.T) {
 	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{
 		Name:       "A",
 		SCondition: "=",
-		SVersion:   "1"})
+		SVersion:   "1"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(pkgARun))
 
 	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{
 		Name:       "A",
 		SCondition: "=",
-		SVersion:   "2"})
+		SVersion:   "2"},
+		"test_arch")
 	assert.NoError(t, err)
 	assert.Nil(t, lu)
 }
@@ -630,21 +636,21 @@ func TestFindNewest(t *testing.T) {
 
 	_, err := addNodeToGraphHelper(g, n2Run)
 	assert.NoError(t, err)
-	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"})
+	lu, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"}, "test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(n2Run))
 
 	// Make sure adding another, lower versioned, node doesn't change the result
 	_, err = addNodeToGraphHelper(g, n1Run)
 	assert.NoError(t, err)
-	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"})
+	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"}, "test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(n2Run))
 
 	// Make sure the newest node gets updated
 	_, err = addNodeToGraphHelper(g, n3Run)
 	assert.NoError(t, err)
-	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"})
+	lu, err = g.FindBestPkgNode(&pkgjson.PackageVer{Name: "n"}, "test_arch")
 	assert.NoError(t, err)
 	assert.True(t, lu.RunNode.Equal(n3Run))
 }
@@ -681,12 +687,12 @@ func TestLookupWithoutRunNodes(t *testing.T) {
 // Add a goal node
 func TestAddGoalToEmptyGraph(t *testing.T) {
 	g := NewPkgGraph()
-	goal, err := g.AddGoalNode("test", nil, false)
+	goal, err := g.AddGoalNode("test", nil, "test_arch", false)
 	assert.NoError(t, err)
 	assert.NotNil(t, goal)
 	assert.Equal(t, "test", goal.GoalName)
 
-	goal, err = g.AddGoalNode("test2", nil, true)
+	goal, err = g.AddGoalNode("test2", nil, "test_arch", true)
 	assert.NoError(t, err)
 	assert.NotNil(t, goal)
 	assert.Equal(t, "test2", goal.GoalName)
@@ -695,12 +701,12 @@ func TestAddGoalToEmptyGraph(t *testing.T) {
 // Make sure we can't add duplicate goal nodes
 func TestDuplicateGoal(t *testing.T) {
 	g := NewPkgGraph()
-	goal, err := g.AddGoalNode("test", nil, false)
+	goal, err := g.AddGoalNode("test", nil, "test_arch", false)
 	assert.NoError(t, err)
 	assert.NotNil(t, goal)
 	assert.Equal(t, "test", goal.GoalName)
 
-	_, err = g.AddGoalNode("test", nil, false)
+	_, err = g.AddGoalNode("test", nil, "test_arch", false)
 	assert.Error(t, err)
 }
 
@@ -711,7 +717,7 @@ func TestGoalWithPackages(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	goal, err := g.AddGoalNode("test", pkgVersions, false)
+	goal, err := g.AddGoalNode("test", pkgVersions, "test_arch", false)
 	assert.NoError(t, err)
 	assert.NotNil(t, goal)
 	assert.Equal(t, len(allNodes)+1, len(g.AllNodes()))
@@ -721,7 +727,7 @@ func TestGoalWithPackages(t *testing.T) {
 	goal, err = g.AddGoalNode("test2", []*pkgjson.PackageVer{
 		&pkgjson.PackageVer{Name: "A"},
 		&pkgjson.PackageVer{Name: "B"},
-	}, false)
+	}, "test_arch", false)
 	assert.NoError(t, err)
 	assert.NotNil(t, goal)
 	assert.Equal(t, len(allNodes)+2, len(g.AllNodes()))
@@ -736,7 +742,7 @@ func TestStrictGoalNodes(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	_, err = g.AddGoalNode("test", []*pkgjson.PackageVer{&pkgjson.PackageVer{Name: "Not a package"}}, true)
+	_, err = g.AddGoalNode("test", []*pkgjson.PackageVer{&pkgjson.PackageVer{Name: "Not a package"}}, "test_arch", true)
 	assert.Error(t, err)
 }
 
@@ -749,10 +755,10 @@ func TestMetaNode(t *testing.T) {
 	meta1 := g.AddMetaNode([]*PkgNode{}, []*PkgNode{})
 	assert.NotNil(t, meta1)
 
-	a, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"})
+	a, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, a)
-	c, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"})
+	c, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"}, "test_arch")
 	assert.NoError(t, err)
 	assert.NotNil(t, c)
 
@@ -797,8 +803,8 @@ func TestMetaNodeAddPkg(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	a, _ := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"})
-	c, _ := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"})
+	a, _ := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "A"}, "test_arch")
+	c, _ := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C"}, "test_arch")
 	meta2 := g.AddMetaNode([]*PkgNode{a.RunNode}, []*PkgNode{c.RunNode})
 
 	component := []*PkgNode{
@@ -929,6 +935,9 @@ func TestReferenceDOTFile(t *testing.T) {
 	err = WriteDOTGraph(gOut, &buf)
 	assert.NoError(t, err)
 
+	// Uncomment to generate a new reference graph file.
+	//WriteDOTGraphFile(gOut, "new_reference.dot")
+
 	f, err := os.Open("test_graph_reference.dot")
 	defer f.Close()
 	assert.NoError(t, err)
@@ -949,7 +958,7 @@ func TestSubgraph(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	root, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "B"})
+	root, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "B"}, "test_arch")
 	assert.NoError(t, err)
 	subGraph, err := g.CreateSubGraph(root.RunNode)
 	assert.NoError(t, err)
@@ -980,7 +989,7 @@ func TestEncodingSubGraph(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, g)
 
-	root, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-3"})
+	root, err := g.FindBestPkgNode(&pkgjson.PackageVer{Name: "C", Version: "3-3"}, "test_arch")
 	assert.NoError(t, err)
 	subGraph, err := g.CreateSubGraph(root.RunNode)
 	assert.NoError(t, err)

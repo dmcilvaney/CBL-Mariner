@@ -19,7 +19,7 @@ const (
 // InitializeGraph initializes and prepares a graph dot file for building.
 // - It will load and return the graph.
 // - It will subgraph the graph to only contain the desired packages if possible.
-func InitializeGraph(inputFile string, packagesToBuild []*pkgjson.PackageVer) (isOptimized bool, pkgGraph *pkggraph.PkgGraph, goalNode *pkggraph.PkgNode, err error) {
+func InitializeGraph(inputFile, targetArch string, packagesToBuild []*pkgjson.PackageVer) (isOptimized bool, pkgGraph *pkggraph.PkgGraph, goalNode *pkggraph.PkgNode, err error) {
 	const (
 		canUseCachedImplicit = false
 		strictGoalNode       = true
@@ -31,12 +31,12 @@ func InitializeGraph(inputFile string, packagesToBuild []*pkgjson.PackageVer) (i
 		return
 	}
 
-	_, err = pkgGraph.AddGoalNode(buildGoalNodeName, packagesToBuild, strictGoalNode)
+	_, err = pkgGraph.AddGoalNode(buildGoalNodeName, packagesToBuild, targetArch, strictGoalNode)
 	if err != nil {
 		return
 	}
 
-	optimizedGraph, goalNode, optimizeErr := OptimizeGraph(pkgGraph, canUseCachedImplicit)
+	optimizedGraph, goalNode, optimizeErr := OptimizeGraph(pkgGraph, targetArch, canUseCachedImplicit)
 	if optimizeErr == nil {
 		logger.Log.Infof("Successfully create solvable subgraph")
 		isOptimized = true
@@ -54,7 +54,7 @@ func InitializeGraph(inputFile string, packagesToBuild []*pkgjson.PackageVer) (i
 }
 
 // OptimizeGraph will attempt to create a solvable subgraph that satisfies the build goal node.
-func OptimizeGraph(pkgGraph *pkggraph.PkgGraph, canUseCachedImplicit bool) (optimizedGraph *pkggraph.PkgGraph, goalNode *pkggraph.PkgNode, err error) {
+func OptimizeGraph(pkgGraph *pkggraph.PkgGraph, targetArch string, canUseCachedImplicit bool) (optimizedGraph *pkggraph.PkgGraph, goalNode *pkggraph.PkgNode, err error) {
 	buildGoalNode := pkgGraph.FindGoalNode(buildGoalNodeName)
 	if buildGoalNode == nil {
 		err = fmt.Errorf("could not find goal node %s", buildGoalNodeName)
@@ -70,7 +70,7 @@ func OptimizeGraph(pkgGraph *pkggraph.PkgGraph, canUseCachedImplicit bool) (opti
 		}
 
 		// Create a solvable ALL goal node
-		goalNode, err = optimizedGraph.AddGoalNode(allGoalNodeName, nil, true)
+		goalNode, err = optimizedGraph.AddGoalNode(allGoalNodeName, nil, targetArch, true)
 		if err != nil {
 			logger.Log.Warnf("Failed to add goal node (%s), error: %s", allGoalNodeName, err)
 			return

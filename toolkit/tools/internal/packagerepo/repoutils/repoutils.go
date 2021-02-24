@@ -52,7 +52,7 @@ func RestoreClonedRepoContents(cloner repocloner.RepoCloner, srcFile string) (er
 			logger.Log.Debugf("%s already exists, skipping clone", rpmName)
 			continue
 		}
-		err = cloner.Clone(cloneDeps, pkgVer)
+		err = cloner.Clone(cloneDeps, pkg.Architecture, pkgVer)
 		if err != nil {
 			return err
 		}

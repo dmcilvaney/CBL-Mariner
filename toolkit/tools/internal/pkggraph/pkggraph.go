@@ -95,6 +95,7 @@ type PkgGraph struct {
 type LookupNode struct {
 	RunNode   *PkgNode // The "meta" run node for a package. Tracks the run-time dependencies for the package. Remote packages will only have a RunNode.
 	BuildNode *PkgNode // The build node for a package. Tracks the build requirements for the package. May be nil for remote packages.
+	Arch      string
 }
 
 var (
@@ -237,7 +238,7 @@ func (g *PkgGraph) validateNodeForLookup(pkgNode *PkgNode) (valid bool, err erro
 	}
 
 	// Check for existing lookup entries which conflict
-	existingLookup, err := g.FindExactPkgNodeFromPkg(pkgNode.VersionedPkg)
+	existingLookup, err := g.FindExactPkgNodeFromPkg(pkgNode.VersionedPkg, pkgNode.Architecture)
 	if err != nil {
 		return
 	}
@@ -303,7 +304,7 @@ func (g *PkgGraph) addToLookup(pkgNode *PkgNode, deferSort bool) (err error) {
 	// Get the existing package lookup, or create it
 	pkgName := pkgNode.VersionedPkg.Name
 
-	existingLookup, err = g.FindExactPkgNodeFromPkg(pkgNode.VersionedPkg)
+	existingLookup, err = g.FindExactPkgNodeFromPkg(pkgNode.VersionedPkg, pkgNode.Architecture)
 	if err != nil {
 		return err
 	}
@@ -312,7 +313,7 @@ func (g *PkgGraph) addToLookup(pkgNode *PkgNode, deferSort bool) (err error) {
 			err = fmt.Errorf("can't add %s, no corresponding run node found and not defering sort", pkgNode)
 			return
 		}
-		existingLookup = &LookupNode{nil, nil}
+		existingLookup = &LookupNode{nil, nil, pkgNode.Architecture}
 		g.lookupTable()[pkgName] = append(g.lookupTable()[pkgName], existingLookup)
 	}
 
@@ -468,7 +469,7 @@ func (g *PkgGraph) RemovePkgNode(pkgNode *PkgNode) {
 }
 
 // FindDoubleConditionalPkgNodeFromPkg has the same behavior as FindConditionalPkgNodeFromPkg but supports two conditionals
-func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVer) (lookupEntry *LookupNode, err error) {
+func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVer, arch string) (lookupEntry *LookupNode, err error) {
 	var (
 		requestInterval, nodeInterval pkgjson.PackageVerInterval
 	)
@@ -489,7 +490,8 @@ func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVe
 			return
 		}
 
-		if nodeInterval.Satisfies(&requestInterval) {
+		//noarch packages can satisfy any arch requirement.
+		if nodeInterval.Satisfies(&requestInterval) && (node.Arch == arch || node.Arch == "noarch") {
 			// Keep going, we want the highest version which satisfies both conditionals
 			lookupEntry = node
 		}
@@ -500,7 +502,7 @@ func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVe
 // FindExactPkgNodeFromPkg attempts to find a LookupNode which has the exactly
 // correct version information listed in the PackageVer structure. Returns nil
 // if no lookup entry is found.
-func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer) (lookupEntry *LookupNode, err error) {
+func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer, arch string) (lookupEntry *LookupNode, err error) {
 	var (
 		requestInterval, nodeInterval pkgjson.PackageVerInterval
 	)
@@ -522,7 +524,8 @@ func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer) (lookupEn
 			return
 		}
 		//Exact lookup must match the exact node, including conditionals.
-		if requestInterval.Equal(&nodeInterval) {
+		//noarch packages can satisfy any arch requirement.
+		if requestInterval.Equal(&nodeInterval) && (node.Arch == arch || node.Arch == "noarch") {
 			lookupEntry = node
 		}
 	}
@@ -533,8 +536,8 @@ func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer) (lookupEn
 // PackageVer structure has already been created. Returns nil if no lookup entry
 // is found.
 // Condition = "" is equivalent to Condition = "=".
-func (g *PkgGraph) FindBestPkgNode(pkgVer *pkgjson.PackageVer) (lookupEntry *LookupNode, err error) {
-	lookupEntry, err = g.FindDoubleConditionalPkgNodeFromPkg(pkgVer)
+func (g *PkgGraph) FindBestPkgNode(pkgVer *pkgjson.PackageVer, arch string) (lookupEntry *LookupNode, err error) {
+	lookupEntry, err = g.FindDoubleConditionalPkgNodeFromPkg(pkgVer, arch)
 	return
 }
 
@@ -616,16 +619,16 @@ func (n PkgNode) SetDOTID(id string) {
 func (n *PkgNode) FriendlyName() string {
 	switch n.Type {
 	case TypeBuild:
-		return fmt.Sprintf("%s-%s-BUILD<%s>", n.VersionedPkg.Name, n.VersionedPkg.Version, n.State.String())
+		return fmt.Sprintf("%s-%s-%s-BUILD<%s>", n.VersionedPkg.Name, n.VersionedPkg.Version, n.Architecture, n.State.String())
 	case TypeRun:
-		return fmt.Sprintf("%s-%s-RUN<%s>", n.VersionedPkg.Name, n.VersionedPkg.Version, n.State.String())
+		return fmt.Sprintf("%s-%s-%s-RUN<%s>", n.VersionedPkg.Name, n.VersionedPkg.Version, n.Architecture, n.State.String())
 	case TypeRemote:
 		ver1 := fmt.Sprintf("%s%s", n.VersionedPkg.Condition, n.VersionedPkg.Version)
 		ver2 := ""
 		if len(n.VersionedPkg.SCondition) > 0 || len(n.VersionedPkg.SVersion) > 0 {
 			ver2 = fmt.Sprintf("%s,%s%s", ver1, n.VersionedPkg.SCondition, n.VersionedPkg.SVersion)
 		}
-		return fmt.Sprintf("%s-%s-REMOTE<%s>", n.VersionedPkg.Name, ver2, n.State.String())
+		return fmt.Sprintf("%s-%s-%s-REMOTE<%s>", n.VersionedPkg.Name, ver2, n.Architecture, n.State.String())
 	case TypeGoal:
 		return fmt.Sprintf("%s", n.GoalName)
 	case TypePureMeta:
@@ -955,7 +958,7 @@ func (g *PkgGraph) AddMetaNode(from []*PkgNode, to []*PkgNode) (metaNode *PkgNod
 }
 
 // AddGoalNode adds a goal node to the graph which links to existing nodes. An empty package list will add an edge to all nodes
-func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, strict bool) (goalNode *PkgNode, err error) {
+func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, arch string, strict bool) (goalNode *PkgNode, err error) {
 	// Check if we already have a goal node with the requested name
 	if g.FindGoalNode(goalName) != nil {
 		err = fmt.Errorf("can't have two goal nodes named %s", goalName)
@@ -1000,13 +1003,13 @@ func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, 
 	for pkg := range goalSet {
 		var existingNode *LookupNode
 		// Try to find an exact match first (to make sure we match revision number exactly, if available)
-		existingNode, err = g.FindExactPkgNodeFromPkg(pkg)
+		existingNode, err = g.FindExactPkgNodeFromPkg(pkg, arch)
 		if err != nil {
 			return
 		}
 		if existingNode == nil {
 			// Try again with a more general search
-			existingNode, err = g.FindBestPkgNode(pkg)
+			existingNode, err = g.FindBestPkgNode(pkg, arch)
 			if err != nil {
 				return
 			}
@@ -1018,7 +1021,7 @@ func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, 
 			g.SetEdge(goalEdge)
 			goalSet[pkg] = false
 		} else {
-			logger.Log.Warnf("Could not goal package %+v", pkg)
+			logger.Log.Warnf("Could not goal package %+v for arch %s", pkg, arch)
 			if strict {
 				logger.Log.Warnf("Missing %+v", pkg)
 				err = fmt.Errorf("could not find all goal nodes with strict=true")
