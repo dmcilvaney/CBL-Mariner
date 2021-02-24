@@ -241,7 +241,7 @@ func (r *RpmRepoCloner) initializeMountedChrootRepo(repoDir string) (err error) 
 // Clone clones the provided list of packages.
 // If cloneDeps is set, package dependencies will also be cloned.
 // It will automatically resolve packages that describe a provide or file from a package.
-func (r *RpmRepoCloner) Clone(cloneDeps bool, packagesToClone ...*pkgjson.PackageVer) (err error) {
+func (r *RpmRepoCloner) Clone(cloneDeps bool, targetArch string, packagesToClone ...*pkgjson.PackageVer) (err error) {
 	const (
 		builtRepoID  = "local-repo"
 		cachedRepoID = "upstream-cache-repo"
@@ -255,8 +255,13 @@ func (r *RpmRepoCloner) Clone(cloneDeps bool, packagesToClone ...*pkgjson.Packag
 		args := []string{
 			"--destdir",
 			chrootDownloadDir,
+			"--targetarch",
+			targetArch,
 			pkgName,
 		}
+
+		logger.Log.Errorf("UNHANDLED --targetarch argument for tdnf!!!!")
+		return fmt.Errorf("Fix tdnf to support --targetarch")
 
 		if cloneDeps {
 			args = append([]string{"download", "--alldeps"}, args...)
