@@ -26,7 +26,6 @@ var (
 	targetArch       = app.Flag("--target-arch", "Cross compile target arch").String()
 
 	depGraph = pkggraph.NewPkgGraph()
-	arch     = ""
 )
 
 func main() {
@@ -60,10 +59,11 @@ func main() {
 	}
 
 	// Add a default "ALL" goal to build everything local
-	_, err = depGraph.AddGoalNode("ALL", nil, arch, *strictGoals)
+	_, err = depGraph.AddGoalNode("ALL", nil, *targetArch, *strictGoals)
 	if err != nil {
 		logger.Log.Panic(err)
 	}
+	//TODO: Do we want to sub graph here to prune all non-target arch packages?
 
 	err = pkggraph.WriteDOTGraphFile(depGraph, *output)
 	if err != nil {
@@ -235,24 +235,42 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package, buildArch, t
 	// For each run time and build time dependency, add the edges
 	logger.Log.Tracef("Adding run dependencies")
 	for _, dependency := range runDependencies {
-		err = addSingleDependency(g, runNode, dependency, pkg.Architecture)
+		err = addSingleDependency(g, runNode, dependency, buildArch)
 		if err != nil {
 			logger.Log.Errorf("Unable to add run-time dependencies for %+v", pkg)
 			return
 		}
 		dependenciesAdded++
+		if buildArch != targetArch && pkg.Architecture == "noarch" {
+			// We won't know where a noarch package will be installed, it may have
+			// arch specific runtime requires so we need to build both build and target arches.
+			err = addSingleDependency(g, runNode, dependency, targetArch)
+			if err != nil {
+				logger.Log.Errorf("Unable to add cross-arch run-time dependencies for %+v", pkg)
+				return
+			}
+			dependenciesAdded++
+		}
 	}
 
 	logger.Log.Tracef("Adding build dependencies")
 	for _, dependency := range buildDependencies {
-		err = addSingleDependency(g, buildNode, dependency, pkg.Architecture)
+		// Most packages will both build and run on the buildArch architecture
+		err = addSingleDependency(g, buildNode, dependency, buildArch)
 		if err != nil {
 			logger.Log.Errorf("Unable to add build-time dependencies for %+v", pkg)
 			return
 		}
 		dependenciesAdded++
+		// For either cross arch, or noarch packages we may also need the target arch packages to build
+		// if we are cross compiling.
 		if buildArch != targetArch && pkg.Architecture != buildArch {
-			err = addSingleDependency(g, buildNode, dependency, buildArch)
+			err = addSingleDependency(g, buildNode, dependency, targetArch)
+			if err != nil {
+				logger.Log.Errorf("Unable to add cross-arch build-time dependencies for %+v", pkg)
+				return
+			}
+			dependenciesAdded++
 		}
 	}
 

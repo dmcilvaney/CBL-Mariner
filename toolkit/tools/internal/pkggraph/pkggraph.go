@@ -490,7 +490,8 @@ func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVe
 			return
 		}
 
-		if nodeInterval.Satisfies(&requestInterval) && node.Arch == arch {
+		//noarch packages can satisfy any arch requirement.
+		if nodeInterval.Satisfies(&requestInterval) && (node.Arch == arch || node.Arch == "noarch") {
 			// Keep going, we want the highest version which satisfies both conditionals
 			lookupEntry = node
 		}
@@ -523,7 +524,8 @@ func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer, arch stri
 			return
 		}
 		//Exact lookup must match the exact node, including conditionals.
-		if requestInterval.Equal(&nodeInterval) && arch == node.Arch {
+		//noarch packages can satisfy any arch requirement.
+		if requestInterval.Equal(&nodeInterval) && (node.Arch == arch || node.Arch == "noarch") {
 			lookupEntry = node
 		}
 	}
