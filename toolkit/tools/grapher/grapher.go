@@ -23,16 +23,25 @@ var (
 	logLevel         = exe.LogLevelFlag(app)
 	strictGoals      = app.Flag("strict-goals", "Don't allow missing goal packages").Bool()
 	strictUnresolved = app.Flag("strict-unresolved", "Don't allow missing unresolved packages").Bool()
+	targetArch       = app.Flag("--target-arch", "Cross compile target arch").String()
 
 	depGraph = pkggraph.NewPkgGraph()
+	arch     = ""
 )
 
 func main() {
 	app.Version(exe.ToolkitVersion)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	var err error
+	var (
+		err       error
+		buildArch = "x86_64"
+	)
 	logger.InitBestEffort(*logFile, *logLevel)
+
+	if targetArch == nil || len(*targetArch) == 0 {
+		targetArch = &buildArch
+	}
 
 	localPackages := pkgjson.PackageRepo{}
 	err = localPackages.ParsePackageJSON(*input)
@@ -40,7 +49,7 @@ func main() {
 		logger.Log.Panic(err)
 	}
 
-	err = populateGraph(depGraph, &localPackages)
+	err = populateGraph(depGraph, &localPackages, buildArch, *targetArch)
 	if err != nil {
 		logger.Log.Panic(err)
 	}
@@ -51,7 +60,7 @@ func main() {
 	}
 
 	// Add a default "ALL" goal to build everything local
-	_, err = depGraph.AddGoalNode("ALL", nil, *strictGoals)
+	_, err = depGraph.AddGoalNode("ALL", nil, arch, *strictGoals)
 	if err != nil {
 		logger.Log.Panic(err)
 	}
@@ -67,14 +76,14 @@ func main() {
 // addUnresolvedPackage adds an unresolved node to the graph representing the
 // packged described in the PackgetVer structure. Returns an error if the node
 // could not be created.
-func addUnresolvedPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer) (newRunNode *pkggraph.PkgNode, err error) {
+func addUnresolvedPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer, arch string) (newRunNode *pkggraph.PkgNode, err error) {
 	logger.Log.Debugf("Adding unresolved %s", pkgVer)
 	if *strictUnresolved {
 		err = fmt.Errorf("strict-unresolved does not allow unresolved packages, attempting to add %s", pkgVer)
 		return
 	}
 
-	nodes, err := g.FindBestPkgNode(pkgVer)
+	nodes, err := g.FindBestPkgNode(pkgVer, arch)
 	if err != nil {
 		return
 	}
@@ -84,7 +93,7 @@ func addUnresolvedPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer) (new
 	}
 
 	// Create a new node
-	newRunNode, err = g.AddPkgNode(pkgVer, pkggraph.StateUnresolved, pkggraph.TypeRemote, "<NO_SRPM_PATH>", "<NO_RPM_PATH>", "<NO_SPEC_PATH>", "<NO_SOURCE_PATH>", "<NO_ARCHITECTURE>", "<NO_REPO>")
+	newRunNode, err = g.AddPkgNode(pkgVer, pkggraph.StateUnresolved, pkggraph.TypeRemote, "<NO_SRPM_PATH>", "<NO_RPM_PATH>", "<NO_SPEC_PATH>", "<NO_SOURCE_PATH>", arch, "<NO_REPO>")
 	if err != nil {
 		return
 	}
@@ -98,7 +107,7 @@ func addUnresolvedPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer) (new
 // in the PackageVer structure. Returns pointers to the build and run Nodes
 // created, or an error if one of the nodes could not be created.
 func addNodesForPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer, pkg *pkgjson.Package) (newRunNode *pkggraph.PkgNode, newBuildNode *pkggraph.PkgNode, err error) {
-	nodes, err := g.FindExactPkgNodeFromPkg(pkgVer)
+	nodes, err := g.FindExactPkgNodeFromPkg(pkgVer, pkg.Architecture)
 	if err != nil {
 		return
 	}
@@ -147,17 +156,17 @@ func addNodesForPackage(g *pkggraph.PkgGraph, pkgVer *pkgjson.PackageVer, pkg *p
 // addSingleDependency will add an edge between packageNode and the "Run" node for the
 // dependency described in the PackageVer structure. Returns an error if the
 // addition failed.
-func addSingleDependency(g *pkggraph.PkgGraph, packageNode *pkggraph.PkgNode, dependency *pkgjson.PackageVer) error {
+func addSingleDependency(g *pkggraph.PkgGraph, packageNode *pkggraph.PkgNode, dependency *pkgjson.PackageVer, arch string) error {
 	var dependentNode *pkggraph.PkgNode
 	logger.Log.Tracef("Adding a dependency from %+v to %+v", packageNode.VersionedPkg, dependency)
-	nodes, err := g.FindBestPkgNode(dependency)
+	nodes, err := g.FindBestPkgNode(dependency, arch)
 	if err != nil {
 		logger.Log.Errorf("Unable to check lookup list for %+v (%s)", dependency, err)
 		return err
 	}
 
 	if nodes == nil {
-		dependentNode, err = addUnresolvedPackage(g, dependency)
+		dependentNode, err = addUnresolvedPackage(g, dependency, arch)
 		if err != nil {
 			logger.Log.Errorf(`Could not add a package "%s"`, dependency.Name)
 			return err
@@ -206,14 +215,14 @@ func addLocalPackage(g *pkggraph.PkgGraph, pkg *pkgjson.Package) error {
 // addDependencies adds edges for both build and runtime requirements for the
 // package described in the Package structure. Returns an error if the edges
 // could not be created.
-func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package) (dependenciesAdded int, err error) {
+func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package, buildArch, targetArch string) (dependenciesAdded int, err error) {
 	provide := pkg.Provides
 	runDependencies := pkg.Requires
 	buildDependencies := pkg.BuildRequires
 
 	// Find the current node in the lookup list.
 	logger.Log.Debugf("Adding dependencies for package %s", pkg.SrpmPath)
-	nodes, err := g.FindExactPkgNodeFromPkg(provide)
+	nodes, err := g.FindExactPkgNodeFromPkg(provide, pkg.Architecture)
 	if err != nil {
 		return
 	}
@@ -226,7 +235,7 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package) (dependencie
 	// For each run time and build time dependency, add the edges
 	logger.Log.Tracef("Adding run dependencies")
 	for _, dependency := range runDependencies {
-		err = addSingleDependency(g, runNode, dependency)
+		err = addSingleDependency(g, runNode, dependency, pkg.Architecture)
 		if err != nil {
 			logger.Log.Errorf("Unable to add run-time dependencies for %+v", pkg)
 			return
@@ -236,12 +245,15 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package) (dependencie
 
 	logger.Log.Tracef("Adding build dependencies")
 	for _, dependency := range buildDependencies {
-		err = addSingleDependency(g, buildNode, dependency)
+		err = addSingleDependency(g, buildNode, dependency, pkg.Architecture)
 		if err != nil {
 			logger.Log.Errorf("Unable to add build-time dependencies for %+v", pkg)
 			return
 		}
 		dependenciesAdded++
+		if buildArch != targetArch && pkg.Architecture != buildArch {
+			err = addSingleDependency(g, buildNode, dependency, buildArch)
+		}
 	}
 
 	return
@@ -249,7 +261,7 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package) (dependencie
 
 // populateGraph adds all the data contained in the PackageRepo structure into
 // the graph.
-func populateGraph(g *pkggraph.PkgGraph, repo *pkgjson.PackageRepo) (err error) {
+func populateGraph(g *pkggraph.PkgGraph, repo *pkgjson.PackageRepo, buildArch, targetArch string) (err error) {
 	packages := repo.Repo
 
 	// Scan and add each package we know about
@@ -270,7 +282,7 @@ func populateGraph(g *pkggraph.PkgGraph, repo *pkgjson.PackageRepo) (err error) 
 	dependenciesAdded := 0
 	for idx := range packages {
 		pkg := packages[idx]
-		num, err := addPkgDependencies(g, pkg)
+		num, err := addPkgDependencies(g, pkg, buildArch, targetArch)
 		if err != nil {
 			logger.Log.Errorf("Failed to add dependency %+v", pkg)
 			return err
