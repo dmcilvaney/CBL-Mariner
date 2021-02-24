@@ -71,6 +71,7 @@ $(specs_file): $(chroot_worker) $(BUILD_SPECS_DIR) $(build_specs) $(build_spec_d
 		--dist-tag $(DIST_TAG) \
 		--worker-tar $(chroot_worker) \
 		$(logging_command) \
+		$(if $(TARGET_ARCH),--target-arch=$(TARGET_ARCH)) \
 		--output $@
 
 # Convert the dependency information in the json file into a graph structure

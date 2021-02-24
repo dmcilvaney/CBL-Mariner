@@ -39,6 +39,7 @@ PACKAGE_ARCHIVE                 ?=
 PACKAGE_BUILD_RETRIES           ?= 1
 # Set to 0 to use the number of logical CPUs.
 CONCURRENT_PACKAGE_BUILDS       ?= 0
+TARGET_ARCH                     ?=
 
 # Folder defines
 toolkit_root     := $(abspath $(dir $(lastword $(MAKEFILE_LIST))))

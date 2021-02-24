@@ -13,6 +13,7 @@ import (
 	"path"
 	"path/filepath"
 	"reflect"
+	"runtime"
 	"strings"
 	"sync"
 	"time"
@@ -372,10 +373,15 @@ func calculateSPECsToRepack(specFiles []string, distTag, outDir string, nestedSo
 
 	logger.Log.Infof("Calculating SPECs to repack")
 
+	arch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
 	// Start the workers now so they begin working as soon as a new job is buffered.
 	for i := 0; i < workers; i++ {
 		wg.Add(1)
-		go specsToPackWorker(requests, results, cancel, &wg, distTag, outDir, nestedSourcesDir, repackAll)
+		go specsToPackWorker(requests, results, cancel, &wg, distTag, outDir, arch, nestedSourcesDir, repackAll)
 	}
 
 	for _, specFile := range specFiles {
@@ -425,7 +431,7 @@ func calculateSPECsToRepack(specFiles []string, distTag, outDir string, nestedSo
 }
 
 // specsToPackWorker will process a channel of spec files that should be checked if packing is needed.
-func specsToPackWorker(requests <-chan string, results chan<- *specState, cancel <-chan struct{}, wg *sync.WaitGroup, distTag, outDir string, nestedSourcesDir, repackAll bool) {
+func specsToPackWorker(requests <-chan string, results chan<- *specState, cancel <-chan struct{}, wg *sync.WaitGroup, distTag, outDir, arch string, nestedSourcesDir, repackAll bool) {
 	const (
 		queryFormat         = `%{NAME}-%{VERSION}-%{RELEASE}.src.rpm`
 		queryExclusiveArch  = "%{ARCH}\n[%{EXCLUSIVEARCH}]\n"
@@ -463,7 +469,7 @@ func specsToPackWorker(requests <-chan string, results chan<- *specState, cancel
 		if nestedSourcesDir {
 			sourceDir = filepath.Join(sourceDir, nestedSourceDirName)
 		}
-		specQueryResults, err := rpm.QuerySPEC(specFile, sourceDir, queryFormat, defines, rpm.QueryHeaderArgument)
+		specQueryResults, err := rpm.QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, rpm.QueryHeaderArgument)
 
 		if err != nil {
 			if err.Error() == rpm.NoCompatibleArchError {
@@ -494,7 +500,7 @@ func specsToPackWorker(requests <-chan string, results chan<- *specState, cancel
 		}
 
 		// Sanity check that SRPMS is meant to be built for the machine architecture
-		isCompatible, err := rpm.SpecExclusiveArchIsCompatible(specFile, sourceDir, defines)
+		isCompatible, err := rpm.SpecExclusiveArchIsCompatible(specFile, sourceDir, arch, defines)
 		if err != nil {
 			result.err = err
 			results <- result
@@ -770,9 +776,9 @@ func createRPMBuildFolderStructure(workingDir string) (err error) {
 
 // readSPECTagArray will return an array of tag values from the given specfile.
 // (e.g. all SOURCE entries)
-func readSPECTagArray(specFile, sourceDir, tag string, defines map[string]string) (tagValues []string, err error) {
+func readSPECTagArray(specFile, sourceDir, tag, arch string, defines map[string]string) (tagValues []string, err error) {
 	queryFormat := fmt.Sprintf(`[%%{%s}\n]`, tag)
-	return rpm.QuerySPEC(specFile, sourceDir, queryFormat, defines, rpm.QueryHeaderArgument)
+	return rpm.QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, rpm.QueryHeaderArgument)
 }
 
 // hydrateFiles will attempt to retrieve all sources needed to build an SRPM from a SPEC.
@@ -811,8 +817,14 @@ func hydrateFiles(fileTypeToHydrate fileType, specFile, workingDir string, srcCo
 	newSourceDir := filepath.Join(workingDir, srpmSOURCESDir)
 	fileHydrationState := make(map[string]bool)
 
+	// Only consult the current build system's arch
+	arch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
 	// Collect a list of files of type `specTag` needed for this SRPM
-	filesNeeded, err := readSPECTagArray(specFile, srcConfig.localSourceDir, specTag, defines)
+	filesNeeded, err := readSPECTagArray(specFile, srcConfig.localSourceDir, specTag, arch, defines)
 	if err != nil {
 		return
 	}
