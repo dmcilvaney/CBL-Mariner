@@ -143,9 +143,10 @@ func getBuildDependencies(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, g
 func buildSRPMFile(agent buildagents.BuildAgent, buildAttempts int, srpmFile, outArch string, dependencies []string) (builtFiles []string, logFile string, err error) {
 	const (
 		retryDuration = time.Second
+		logExtension  = "log"
 	)
 
-	logBaseName := filepath.Base(srpmFile) + ".log"
+	logBaseName := fmt.Sprintf("%s.%s.%s", filepath.Base(srpmFile), outArch, logExtension)
 	err = retry.Run(func() (buildErr error) {
 		builtFiles, logFile, buildErr = agent.BuildPackage(srpmFile, logBaseName, outArch, dependencies)
 		return
