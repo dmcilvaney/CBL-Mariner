@@ -16,6 +16,7 @@ import (
 	"microsoft.com/pkggen/internal/logger"
 	"microsoft.com/pkggen/internal/pkggraph"
 	"microsoft.com/pkggen/internal/pkgjson"
+	"microsoft.com/pkggen/internal/rpm"
 	"microsoft.com/pkggen/internal/shell"
 	"microsoft.com/pkggen/scheduler/buildagents"
 	"microsoft.com/pkggen/scheduler/schedulerutils"
