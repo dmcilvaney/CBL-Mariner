@@ -63,7 +63,7 @@ var goArchToRpmArch = map[string]string{
 func GetRpmArch(goArch string) (rpmArch string, err error) {
 	rpmArch, ok := goArchToRpmArch[goArch]
 	if !ok {
-		err = fmt.Errorf("Unknown GOARCH detected (%s)", goArch)
+		err = fmt.Errorf("Unrecognized GOARCH detected (%s)", goArch)
 	}
 	return
 }
