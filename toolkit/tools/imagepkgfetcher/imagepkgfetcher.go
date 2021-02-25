@@ -5,6 +5,7 @@ package main
 
 import (
 	"os"
+	"runtime"
 	"strings"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -44,7 +45,7 @@ var (
 	inputSummaryFile  = app.Flag("input-summary-file", "Path to a file with the summary of packages cloned to be restored").String()
 	outputSummaryFile = app.Flag("output-summary-file", "Path to save the summary of packages cloned").String()
 
-	targetArch = app.Flag("target-arch", "Cross compile target arch").String()
+	targetArch = app.Flag("target-arch", "Target arch to build for").String()
 
 	logFile  = exe.LogFileFlag(app)
 	logLevel = exe.LogLevelFlag(app)
@@ -55,8 +56,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 	logger.InitBestEffort(*logFile, *logLevel)
 
-	buildArch := "x86_64"
-	if targetArch == nil || len(*targetArch) == 0 {
+	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
+	if *targetArch == "" {
 		targetArch = &buildArch
 	}
 

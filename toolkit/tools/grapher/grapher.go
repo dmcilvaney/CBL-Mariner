@@ -6,6 +6,7 @@ package main
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"gopkg.in/alecthomas/kingpin.v2"
 	"microsoft.com/pkggen/internal/exe"
@@ -23,7 +24,7 @@ var (
 	logLevel         = exe.LogLevelFlag(app)
 	strictGoals      = app.Flag("strict-goals", "Don't allow missing goal packages").Bool()
 	strictUnresolved = app.Flag("strict-unresolved", "Don't allow missing unresolved packages").Bool()
-	targetArch       = app.Flag("target-arch", "Cross compile target arch").String()
+	targetArch       = app.Flag("target-arch", "Target arch to build for").String()
 
 	depGraph = pkggraph.NewPkgGraph()
 )
@@ -32,13 +33,16 @@ func main() {
 	app.Version(exe.ToolkitVersion)
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 
-	var (
-		err       error
-		buildArch = "x86_64"
-	)
+	var err error
+
 	logger.InitBestEffort(*logFile, *logLevel)
 
-	if targetArch == nil || len(*targetArch) == 0 {
+	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
+	if *targetArch == "" {
 		targetArch = &buildArch
 	}
 

@@ -71,7 +71,7 @@ var (
 	pkgsToBuild   = app.Flag("packages", "Space separated list of top-level packages that should be built. Omit this argument to build all packages.").String()
 	pkgsToRebuild = app.Flag("rebuild-packages", "Space separated list of base package names packages that should be rebuilt.").String()
 
-	targetArch = app.Flag("target-arch", "Cross compile target arch").String()
+	targetArch = app.Flag("target-arch", "Target arch to build for").String()
 
 	logFile  = exe.LogFileFlag(app)
 	logLevel = exe.LogLevelFlag(app)
@@ -83,8 +83,12 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 	logger.InitBestEffort(*logFile, *logLevel)
 
-	buildArch := "x86_64"
-	if targetArch == nil || len(*targetArch) == 0 {
+	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
+	if *targetArch == "" {
 		targetArch = &buildArch
 	}
 

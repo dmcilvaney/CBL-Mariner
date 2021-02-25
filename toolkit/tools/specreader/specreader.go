@@ -47,7 +47,7 @@ var (
 	rpmsDir    = app.Flag("rpm-dir", "Directory containing built RPMs.").Required().ExistingDir()
 	distTag    = app.Flag("dist-tag", "The distribution tag the SPEC will be built with.").Required().String()
 	workerTar  = app.Flag("worker-tar", "Full path to worker_chroot.tar.gz.  If this argument is empty, specs will be parsed in the host environment.").ExistingFile()
-	targetArch = app.Flag("target-arch", "").String()
+	targetArch = app.Flag("target-arch", "Target arch to build for").String()
 	logFile    = exe.LogFileFlag(app)
 	logLevel   = exe.LogLevelFlag(app)
 )
@@ -97,7 +97,7 @@ func parseSPECsWrapper(buildDir, specsDir, rpmsDir, srpmsDir, distTag, outputFil
 			return err
 		}
 		// TODO - Fix conditional when targetArch is malformed
-		if targetArch != nil && buildArch != *targetArch {
+		if *targetArch != "" && buildArch != *targetArch {
 			packageRepoCross, parseError = parseSPECs(specsDir, rpmsDir, srpmsDir, distTag, *targetArch, workers)
 			if parseError != nil {
 				err := fmt.Errorf("Failed to parse target specs (%w)", parseError)
