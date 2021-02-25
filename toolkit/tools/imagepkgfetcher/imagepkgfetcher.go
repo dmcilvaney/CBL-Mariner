@@ -18,6 +18,7 @@ import (
 	"microsoft.com/pkggen/internal/packagerepo/repoutils"
 	"microsoft.com/pkggen/internal/pkggraph"
 	"microsoft.com/pkggen/internal/pkgjson"
+	"microsoft.com/pkggen/internal/rpm"
 )
 
 var (
@@ -70,7 +71,7 @@ func main() {
 	}
 
 	cloner := rpmrepocloner.New()
-	err := cloner.Initialize(*outDir, *tmpDir, *workertar, *existingRpmDir, *useUpdateRepo, *usePreviewRepo, *repoFiles)
+	err = cloner.Initialize(*outDir, *tmpDir, *workertar, *existingRpmDir, *useUpdateRepo, *usePreviewRepo, *repoFiles)
 	if err != nil {
 		logger.Log.Panicf("Failed to initialize RPM repo cloner. Error: %s", err)
 	}
