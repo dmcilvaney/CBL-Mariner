@@ -25,11 +25,7 @@ BuildRequires:  curl-devel
 BuildRequires:  gpgme-devel
 BuildRequires:  cmake
 BuildRequires:  python3-devel
-%if %{with_check}
-BuildRequires:  createrepo_c
-BuildRequires:  glib
-BuildRequires:  libxml2
-%endif
+
 Obsoletes:      yum
 Provides:       yum
 #Source0:       https://github.com/vmware/tdnf/archive/v%{version}.tar.gz
@@ -46,6 +42,7 @@ Patch4:         tdnf-add-mariner-release.patch
 Patch5:         tdnf-support-multiple-gpgkeys.patch
 Patch6:         tdnf-add-download-no-deps-command.patch
 Patch7:         tdnf-use-custom-keyring-for-gpg-checks.patch
+Patch8:         tdnf-add-targetarch-argument.patch
 
 %description
 tdnf is a yum/dnf equivalent which uses libsolv and libcurl

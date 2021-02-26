@@ -1,0 +1,211 @@
+From b96d66449a37a74d2d615f7e678362405e670b97 Mon Sep 17 00:00:00 2001
+From: Daniel McIlvaney <damcilva@microsoft.com>
+Date: Thu, 25 Feb 2021 16:45:01 -0800
+Subject: [PATCH] Add --targetarch tdnf argument to set pkg arch
+
+---
+ client/api.c              |  1 +
+ client/config.c           | 25 +++++++++++++++++++------
+ client/init.c             |  8 ++++++++
+ client/rpmtrans.c         | 18 +++++++++++++++++-
+ include/tdnftypes.h       |  1 +
+ solv/prototypes.h         |  1 +
+ solv/tdnfpool.c           | 10 +++++++++-
+ tools/cli/lib/help.c      |  1 +
+ tools/cli/lib/parseargs.c |  8 ++++++++
+ 9 files changed, 65 insertions(+), 8 deletions(-)
+
+diff --git a/client/api.c b/client/api.c
+index d3ecf9d..9e8e831 100644
+--- a/client/api.c
++++ b/client/api.c
+@@ -1017,6 +1017,7 @@ TDNFResetSack(
+                   &pSack,
+                   pTdnf->pConf->pszCacheDir,
+                   pTdnf->pArgs->pszInstallRoot,
++                  pTdnf->pArgs->pszTargetArch,
+                   nSkipInstalledRpms);
+     BAIL_ON_TDNF_ERROR(dwError);
+ 
+diff --git a/client/config.c b/client/config.c
+index 839a3b8..8a7c551 100644
+--- a/client/config.c
++++ b/client/config.c
+@@ -328,12 +328,23 @@ TDNFConfigReplaceVars(
+                   &pszReplacedTemp);
+     BAIL_ON_TDNF_ERROR(dwError);
+ 
+-    dwError = TDNFReplaceString(
+-                  pszReplacedTemp,
+-                  TDNF_VAR_BASEARCH,
+-                  pConf->pszVarBaseArch,
+-                  &pszDst);
+-    BAIL_ON_TDNF_ERROR(dwError);
++    if (pTdnf->pArgs->pszTargetArch == NULL) {
++        dwError = TDNFReplaceString(
++                    pszReplacedTemp,
++                    TDNF_VAR_BASEARCH,
++                    pConf->pszVarBaseArch,
++                    &pszDst);
++        BAIL_ON_TDNF_ERROR(dwError);
++    }
++    else
++    {
++        dwError = TDNFReplaceString(
++                    pszReplacedTemp,
++                    TDNF_VAR_BASEARCH,
++                    pTdnf->pArgs->pszTargetArch,
++                    &pszDst);
++        BAIL_ON_TDNF_ERROR(dwError);
++    }
+ 
+     TDNFFreeMemory(*ppszString);
+     *ppszString = pszDst;
+diff --git a/client/init.c b/client/init.c
+index 652d5ae..11bce5c 100644
+--- a/client/init.c
++++ b/client/init.c
+@@ -84,6 +84,14 @@ TDNFCloneCmdArgs(
+         BAIL_ON_TDNF_ERROR(dwError);
+     }
+ 
++    if(!IsNullOrEmptyString(pCmdArgsIn->pszTargetArch))
++    {
++        dwError = TDNFAllocateString(
++                      pCmdArgsIn->pszTargetArch,
++                      &pCmdArgs->pszTargetArch);
++        BAIL_ON_TDNF_ERROR(dwError);
++    }
++
+     if(!IsNullOrEmptyString(pCmdArgsIn->pszReleaseVer))
+     {
+         dwError = TDNFAllocateString(
+diff --git a/client/rpmtrans.c b/client/rpmtrans.c
+index 5071ca3..39bf6b0 100644
+--- a/client/rpmtrans.c
++++ b/client/rpmtrans.c
+@@ -60,6 +60,14 @@ TDNFRpmExecTransaction(
+         ts.nProbFilterFlags = ts.nProbFilterFlags | RPMPROB_FILTER_REPLACEPKG;
+     }
+ 
++    //If cross arch ingore arch compatibility check
++    if (pTdnf->pArgs->pszTargetArch != NULL && 
++        strcmp(pTdnf->pArgs->pszTargetArch, pTdnf->pConf->pszVarBaseArch))
++    {
++        printf("Target arch (%s) does not match host arch (%s), skipping arch error checking.\n", pTdnf->pArgs->pszTargetArch, pTdnf->pConf->pszVarBaseArch);
++        ts.nProbFilterFlags = ts.nProbFilterFlags | RPMPROB_FILTER_IGNOREARCH;
++    }
++
+     ts.pTS = rpmtsCreate();
+     if(!ts.pTS)
+     {
+@@ -336,7 +344,15 @@ TDNFRunTransaction(
+     {
+         printf("Running transaction\n");
+     }
+-    rpmtsSetFlags(pTS->pTS, RPMTRANS_FLAG_NONE);
++    if (pTdnf->pArgs->pszTargetArch != NULL && 
++        strcmp(pTdnf->pArgs->pszTargetArch, pTdnf->pConf->pszVarBaseArch))
++    {
++        printf("Target arch (%s) does not match host arch (%s), skipping install/uninstall scripts.\n", pTdnf->pArgs->pszTargetArch, pTdnf->pConf->pszVarBaseArch);
++        // Don't run any scripts, they probably won't work
++        rpmtsSetFlags(pTS->pTS, RPMTRANS_FLAG_NOSCRIPTS | RPMTRANS_FLAG_NOTRIGGERS);
++    } else {
++        rpmtsSetFlags(pTS->pTS, RPMTRANS_FLAG_NONE);
++    }
+     dwError = rpmtsRun(pTS->pTS, NULL, pTS->nProbFilterFlags);
+     BAIL_ON_TDNF_ERROR(dwError);
+ 
+diff --git a/include/tdnftypes.h b/include/tdnftypes.h
+index c68225e..1b0a3ca 100644
+--- a/include/tdnftypes.h
++++ b/include/tdnftypes.h
+@@ -241,6 +241,7 @@ typedef struct _TDNF_CMD_ARGS
+     char* pszConfFile;     //set conf file location
+     char* pszReleaseVer;   //Release version
+     char* pszDestDir;      //set destination directory for package downloads
++    char* pszTargetArch;   //set a non-default target architecture
+ 
+     //Commands and args that do not fall in options
+     char** ppszCmds;
+diff --git a/solv/prototypes.h b/solv/prototypes.h
+index c5246c0..fe311f7 100644
+--- a/solv/prototypes.h
++++ b/solv/prototypes.h
+@@ -280,6 +280,7 @@ SolvInitSack(
+     PSolvSack *ppSack,
+     const char* pszCacheDir,
+     const char* pszRootDir,
++    const char* pszTargetArch,
+     int nSkipInstalledRpms
+     );
+ 
+diff --git a/solv/tdnfpool.c b/solv/tdnfpool.c
+index 6a64f43..70d4911 100644
+--- a/solv/tdnfpool.c
++++ b/solv/tdnfpool.c
+@@ -62,6 +62,7 @@ SolvInitSack(
+     PSolvSack *ppSack,
+     const char* pszCacheDir,
+     const char* pszRootDir,
++    const char* pszTargetArch,
+     int nSkipInstalledRpms
+     )
+ {
+@@ -107,7 +108,14 @@ SolvInitSack(
+         BAIL_ON_TDNF_LIBSOLV_ERROR(dwError);
+     }
+ 
+-    pool_setarch(pPool, systemInfo.machine);
++    if (pszTargetArch != NULL) {
++        printf("Target arch is being overriden to (%s) for LibSolv", pszTargetArch);
++        pool_setarch(pPool, pszTargetArch);
++    }
++    else 
++    {
++        pool_setarch(pPool, systemInfo.machine);
++    }
+     pool_set_flag(pPool, POOL_FLAG_ADDFILEPROVIDESFILTERED, 1);
+ 
+     dwError = SolvInitializeSystemRepo(pPool, &pRepo, pszCacheDir, nSkipInstalledRpms);
+diff --git a/tools/cli/lib/help.c b/tools/cli/lib/help.c
+index 1e72d4b..776f4a9 100644
+--- a/tools/cli/lib/help.c
++++ b/tools/cli/lib/help.c
+@@ -58,6 +58,7 @@ TDNFCliShowHelp(
+     printf("           [--reboot-required]\n");
+     printf("           [--skipsignature]\n");
+     printf("           [--skipdigest]\n");
++    printf("           [--targetarch=<arch>]\n");
+ 
+     printf("List of Main Commands\n");
+     printf("\n");
+diff --git a/tools/cli/lib/parseargs.c b/tools/cli/lib/parseargs.c
+index 8be8ff5..2a7e861 100644
+--- a/tools/cli/lib/parseargs.c
++++ b/tools/cli/lib/parseargs.c
+@@ -64,6 +64,7 @@ static struct option pstOptions[] =
+     {"noplugins",     no_argument, 0, 0},                  //--noplugins
+     {"disableplugin", required_argument, 0, 0},            //--disableplugin
+     {"enableplugin",  required_argument, 0, 0},            //--enableplugin
++    {"targetarch",    required_argument, 0, 0},            //--targetarch to select a non-default architecture
+     {0, 0, 0, 0}
+ };
+ 
+@@ -363,6 +364,13 @@ ParseOption(
+                       &pCmdArgs->pszInstallRoot);
+         BAIL_ON_CLI_ERROR(dwError);
+     }
++    else if(!strcasecmp(pszName, "targetarch"))
++    {
++        dwError = TDNFAllocateString(
++                      optarg,
++                      &pCmdArgs->pszTargetArch);
++        BAIL_ON_CLI_ERROR(dwError);
++    }
+     else if(!strcasecmp(pszName, "releasever"))
+     {
+         dwError = TDNFAllocateString(
+-- 
+2.17.1
+
