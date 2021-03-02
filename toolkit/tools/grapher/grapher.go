@@ -240,18 +240,27 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package, buildArch, t
 	// For each run time and build time dependency, add the edges
 	logger.Log.Tracef("Adding run dependencies")
 	for _, dependency := range runDependencies {
-		err = addSingleDependency(g, runNode, dependency, buildArch)
-		if err != nil {
-			logger.Log.Errorf("Unable to add run-time dependencies for %+v", pkg)
-			return
-		}
-		dependenciesAdded++
-		if buildArch != targetArch && pkg.Architecture == "noarch" {
+		if pkg.Architecture == "noarch" {
 			// We won't know where a noarch package will be installed, it may have
 			// arch specific runtime requires so we need to build both build and target arches.
 			err = addSingleDependency(g, runNode, dependency, targetArch)
 			if err != nil {
-				logger.Log.Errorf("Unable to add cross-arch run-time dependencies for %+v", pkg)
+				logger.Log.Errorf("Unable to add cross-arch (%s) run-time dependency for %+v", targetArch, pkg)
+				return
+			}
+			dependenciesAdded++
+			if buildArch != targetArch {
+				err = addSingleDependency(g, runNode, dependency, buildArch)
+				if err != nil {
+					logger.Log.Errorf("Unable to add cross-arch (%s) run-time dependency for %+v", buildArch, pkg)
+					return
+				}
+				dependenciesAdded++
+			}
+		} else {
+			err = addSingleDependency(g, runNode, dependency, pkg.Architecture)
+			if err != nil {
+				logger.Log.Errorf("Unable to add run-time dependencies for %+v", pkg)
 				return
 			}
 			dependenciesAdded++
