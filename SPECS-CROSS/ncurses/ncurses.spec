@@ -1,3 +1,55 @@
+# Globals which should be in a macro file.
+# These should be set programatically in the future.
+%global _host_arch      x86_64
+%global _target_arch    aarch64
+%global _tuple          %{_target_arch}-%{_vendor}-linux-gnu
+%global _cross_name     %{_target_arch}-%{_vendor}-linux-gnu
+
+# Folders which should be in our macro file
+%global _opt                /opt/
+%global _crossdir           /opt/cross/
+
+# Generally we include '/usr' in most paths.
+# Can we also use '/usr' for our paths? This will bring us in line with the
+# %%configure macro which sets these.
+#%%global _bindir            /bin
+#%%global _sbindir           /sbin
+#%%global _libdir            /lib
+#%%global _lib64dir          /lib64
+#%%global _libexecdir        /libexec
+#%%global _datadir           /share
+#%%global _docdir            /share/doc
+#%%global _includedir        /include
+#%%global _infodir           /share/info
+#%%global _mandir            /share/man
+#%%global _oldincludedir     /include
+
+
+# Why is this wrong? We get "x86_64-pc-linux-gnu" when eval'd, but our 
+# tools select "aarch64-linux-gnu"
+%global _host_vendor        %{nil}
+
+# If we want our cross compile aware packges to also support native, we
+# need logic to switch modes something like this:
+%if %{_target_arch} != %{_host_arch}
+%global _cross_prefix       %{_crossdir}%{_tuple}/
+%global _cross_sysroot      %{_crossdir}%{_tuple}/sysroot/
+%global _cross_includedir   /usr/%{_host}/%{_tuple}/include/
+%global _cross_infodir      %{_crossdir}%{_tuple}/share/info
+%global _cross_bindir       %{_tuple}/bin
+%global _cross_libdir       %{_tuple}/lib
+%global _tuple_name         %{_tuple}-
+%else
+%global _cross_prefix       %{nil}
+%global _cross_exec_prefix  %{nil}
+%global _cross_sysroot      %{nil}
+%global _cross_includedir   %{_includedir}
+%global _cross_infodir      %{_infodir}
+%global _cross_bindir       %{_bindir}
+%global _cross_libdir       %{_libdir}
+%global _tuple_name         %{nil}
+%endif
+
 Summary:        Libraries for terminal handling of character screens
 Name:           ncurses
 Version:        6.2
@@ -9,7 +61,10 @@ Vendor:         Microsoft Corporation
 Distribution:   Mariner
 Source0:        ftp://ftp.invisible-island.net/%{name}/%{name}-%{version}.tar.gz
 
-Requires:       ncurses-libs = %{version}-%{release}
+%if %{_target_arch} != %{_host_arch}
+#BuildRequires:  aarch64-mariner-linux-gnu-cross-gcc
+%endif
+#Requires:       ncurses-libs = %{version}-%{release}
 
 %description
 The Ncurses package contains libraries for terminal-independent
@@ -49,6 +104,43 @@ It contains all terminfo files
 %setup -q -n %{name}-%{version}
 
 %build
+%if %{_target_arch} != %{_host_arch}
+export PATH="%{_cross_prefix}/bin":$PATH
+echo %{_host}
+%define _build x86_64-pc-linux-gnu
+%define _host %{_tuple}
+echo "newbuild"
+echo %{_build}
+echo "newhost"
+echo %{_host}
+export BUILD_CC=gcc
+export CC=%{_tuple_name}gcc
+export CXX=%{_tuple_name}g++
+export AR=%{_tuple_name}ar
+export AS=%{_tuple_name}as
+export RANLIB=%{_tuple_name}ranlib
+export LD=%{_tuple_name}ld
+export STRIP=%{_tuple_name}strip
+#export CROSS_COMPILE=%{_tuple_name}
+%define cross_configure \
+  %{set_build_flags}; \
+  %{_configure} --target=%{_tuple} --host=%{_host} --build=%{_build} \\\
+        --program-prefix=%{?_program_prefix} \\\
+        --disable-dependency-tracking \\\
+        --prefix=%{_cross_prefix} \\\
+        --exec-prefix=%{_exec_prefix} \\\
+        --bindir=%{_cross_sysroot}/bin\\\
+        --sbindir=%{_cross_sysroot}/sbin \\\
+        --sysconfdir=%{_cross_sysroot}/%{_sysconfdir} \\\
+        --datadir=%{_cross_sysroot}/%{_datadir} \\\
+        --includedir=%{_cross_sysroot}/include \\\
+        --libdir=%{_cross_sysroot}/lib \\\
+        --libexecdir=%{_cross_sysroot}%{_libexecdir} \\\
+        --localstatedir=%{_cross_sysroot}%{_localstatedir} \\\
+        --sharedstatedir=%{_cross_sysroot}%{_sharedstatedir} \\\
+        --mandir=%{_cross_sysroot}%{_mandir} \\\
+        --infodir=%{_cross_infodir}
+%endif
 common_options="\
     --enable-colorfgbg \
     --enable-hard-tabs \
@@ -76,7 +168,7 @@ for abi in 5 6; do
 
         [ $abi = 6 -a $char = widec ] && progs=yes || progs=no
 
-        %configure $(
+        %cross_configure $(
             echo $common_options --with-abi-version=$abi
             [ $abi = 5 ] && echo $abi5_options
             [ $char = widec ] && echo --enable-widec
@@ -157,14 +249,14 @@ rm -f $RPM_BUILD_ROOT%{_libdir}/pkgconfig/*_g.pc
 
 xz NEWS
 
-%post libs -p /sbin/ldconfig
-%postun libs -p /sbin/ldconfig
+#%post libs -p /sbin/ldconfig
+#%postun libs -p /sbin/ldconfig
 
-%post compat -p /sbin/ldconfig
-%postun compat -p /sbin/ldconfig
+#%post compat -p /sbin/ldconfig
+#%postun compat -p /sbin/ldconfig
 
-%post devel -p /sbin/ldconfig
-%postun devel -p /sbin/ldconfig
+#%post devel -p /sbin/ldconfig
+#%postun devel -p /sbin/ldconfig
 
 %files
 %defattr(-,root,root)
