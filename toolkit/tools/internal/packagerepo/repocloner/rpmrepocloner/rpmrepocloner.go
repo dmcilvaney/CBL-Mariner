@@ -258,6 +258,7 @@ func (r *RpmRepoCloner) Clone(cloneDeps bool, targetArch string, packagesToClone
 			"--targetarch",
 			targetArch,
 			pkgName,
+			"--refresh",
 		}
 
 		if cloneDeps {
