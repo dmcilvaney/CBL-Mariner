@@ -260,9 +260,6 @@ func (r *RpmRepoCloner) Clone(cloneDeps bool, targetArch string, packagesToClone
 			pkgName,
 		}
 
-		logger.Log.Errorf("UNHANDLED --targetarch argument for tdnf!!!!")
-		return fmt.Errorf("Fix tdnf to support --targetarch")
-
 		if cloneDeps {
 			args = append([]string{"download", "--alldeps"}, args...)
 		} else {
