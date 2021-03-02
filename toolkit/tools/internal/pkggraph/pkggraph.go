@@ -976,7 +976,13 @@ func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, 
 		logger.Log.Infof("Adding \"%s\" goal for all nodes", goalName)
 		for _, node := range g.AllRunNodes() {
 			logger.Log.Tracef("\t%s-%s %d", node.VersionedPkg.Name, node.VersionedPkg.Version, node.ID())
-			goalSet[node.VersionedPkg] = true
+			// Only pick the nodes which have a matching arch
+			if node.Architecture == arch || node.Architecture == "noarch" {
+				logger.Log.Tracef("\t\tADDING")
+				goalSet[node.VersionedPkg] = true
+			} else {
+				logger.Log.Tracef("\t\tSKIPPING due to incorrect arch: (%s)", node.Architecture)
+			}
 		}
 	}
 

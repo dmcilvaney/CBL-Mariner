@@ -75,9 +75,10 @@ $(specs_file): $(chroot_worker) $(BUILD_SPECS_DIR) $(build_specs) $(build_spec_d
 		--output $@
 
 # Convert the dependency information in the json file into a graph structure
-$(graph_file): $(specs_file) $(go-grapher)
+$(graph_file): $(specs_file) $(go-grapher) $(depend_TARGET_ARCH)
 	$(go-grapher) \
 		--input $(specs_file) \
+		$(if $(TARGET_ARCH),--target-arch=$(TARGET_ARCH)) \
 		$(logging_command) \
 		--output $@
 
