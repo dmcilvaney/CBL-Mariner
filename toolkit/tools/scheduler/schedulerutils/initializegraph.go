@@ -43,11 +43,14 @@ func InitializeGraph(inputFile, targetArch string, packagesToBuild []*pkgjson.Pa
 		pkgGraph = optimizedGraph
 	} else {
 		logger.Log.Warn("Could not create solvable subgraph, forcing full package build")
-		goalNode = pkgGraph.FindGoalNode(allGoalNodeName)
-		if goalNode == nil {
-			err = fmt.Errorf("could not find goal node %s", allGoalNodeName)
-			return
-		}
+		// Error out for now to prevent errant rebuilds
+		err = fmt.Errorf("failure")
+		return
+		//goalNode = pkgGraph.FindGoalNode(allGoalNodeName)
+		//if goalNode == nil {
+		//	err = fmt.Errorf("could not find goal node %s", allGoalNodeName)
+		//	return
+		//}
 	}
 
 	return

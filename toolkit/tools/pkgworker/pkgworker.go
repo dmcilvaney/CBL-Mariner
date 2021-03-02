@@ -10,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"strings"
 
 	"gopkg.in/alecthomas/kingpin.v2"
@@ -149,16 +150,48 @@ func buildSRPMInChroot(chrootDir, rpmDirPath, workerTar, srpmFile, repoFile, rpm
 }
 
 func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines map[string]string, packagesToInstall []string) (err error) {
+	const (
+		sysrootDir = "/opt/cross/aarch64-mariner-linux-gnu/sysroot"
+	)
 	// Convert /localrpms into a repository that a package manager can use
 	err = rpmrepomanager.CreateRepo(chrootLocalRpmsDir)
 	if err != nil {
 		return
 	}
 
+	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+
 	// install any additional packages, such as build dependencies.
-	err = tdnfInstall(packagesToInstall)
+	err = tdnfInstall(packagesToInstall, buildArch, "/")
 	if err != nil {
 		return
+	}
+
+	// Check if we are cross compiling. If so, populate the sysroot
+	if buildArch != outArch {
+		// Another hack. Adding a spot for initial sysroot packages. Should try
+		// to remove this for the final design.
+		initialSysroot := make([]string, 0)
+		initialSysroot = append(initialSysroot, "mariner-release")
+		initialSysroot = append(initialSysroot, "filesystem")
+		err = tdnfInstall(initialSysroot, outArch, sysrootDir)
+		if err != nil {
+			return
+		}
+		// This is a bit of a hack. We need a way for the spec file to tell us that
+		// it doesn't need certain BuildRequires to be installed into the sysroot.
+		// For example, the cross-toolchain really should only be installed into
+		// the chroot but not installed into the sysroot
+		crossToolchain := make([]string, 0)
+		crossToolchain = append(crossToolchain, "aarch64-mariner-linux-gnu-cross-gcc")
+		err = tdnfInstall(crossToolchain, buildArch, "/")
+		if err != nil {
+			return
+		}
+		err = tdnfInstall(packagesToInstall, outArch, sysrootDir)
+		if err != nil {
+			return
+		}
 	}
 
 	// Remove all libarchive files on the system before issuing a build.
@@ -217,7 +250,7 @@ func moveBuiltRPMs(rpmOutDir, dstDir string) (builtRPMs []string, err error) {
 	return
 }
 
-func tdnfInstall(packages []string) (err error) {
+func tdnfInstall(packages []string, outArch, installRoot string) (err error) {
 	const (
 		alreadyInstalledPostfix = "is already installed."
 		noMatchingPackagesErr   = "Error(1011) : No matching packages"
@@ -237,6 +270,17 @@ func tdnfInstall(packages []string) (err error) {
 	}
 
 	installArgs := []string{"install", "-y"}
+	installArgs = append(installArgs, "--targetarch", outArch)
+	// This --refresh can be needed to workaround some oddities with --targetarch.
+	installArgs = append(installArgs, "--refresh")
+	// Another hack. To install to the sysroot, tdnf requires that releasever be set. Otherwise you get
+	// this fun tdnf error:
+	// Error(1022) : distroverpkg config entry is set to a package that is not installed. Check /etc/tdnf/tdnf.conf
+	// For some reason, tdnf cannot find our standard releasever which is supplied by mariner-release.
+	// We might need to out-of-band install mariner-release into the sysroot. Until then, overload
+	// the releasever inline in the tdnf command.
+	installArgs = append(installArgs, "--releasever", "1.0")
+	installArgs = append(installArgs, "--installroot", installRoot)
 	installArgs = append(installArgs, packages...)
 	stdout, stderr, err := shell.Execute("tdnf", installArgs...)
 	foundNoMatchingPackages := false
