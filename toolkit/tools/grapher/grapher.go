@@ -245,14 +245,14 @@ func addPkgDependencies(g *pkggraph.PkgGraph, pkg *pkgjson.Package, buildArch, t
 			// arch specific runtime requires so we need to build both build and target arches.
 			err = addSingleDependency(g, runNode, dependency, targetArch)
 			if err != nil {
-				logger.Log.Errorf("Unable to add cross-arch (%s) run-time dependency for %+v", targetArch, pkg)
+				logger.Log.Errorf("Unable to add target-arch (%s) run-time dependency for %+v", targetArch, pkg)
 				return
 			}
 			dependenciesAdded++
 			if buildArch != targetArch {
 				err = addSingleDependency(g, runNode, dependency, buildArch)
 				if err != nil {
-					logger.Log.Errorf("Unable to add cross-arch (%s) run-time dependency for %+v", buildArch, pkg)
+					logger.Log.Errorf("Unable to add build-arch (%s) run-time dependency for %+v", buildArch, pkg)
 					return
 				}
 				dependenciesAdded++

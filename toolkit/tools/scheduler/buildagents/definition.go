@@ -37,8 +37,9 @@ type BuildAgent interface {
 	// - inputFile is the SRPM to build.
 	// - logName is the file name to save the package build log to.
 	// - outArch is the architecture where the output binary will run
-	// - dependencies is a list of dependencies that need to be installed before building.
-	BuildPackage(inputFile, logName, outArch string, dependencies []string) ([]string, string, error)
+	// - nativeDependencies is a list of dependencies that need to be installed before building.
+	// - targetDependencies is a list of dependencies that need to be installed into the target sysroot before building
+	BuildPackage(inputFile, logName, outArch string, nativeDependencies, targetDependencies []string) ([]string, string, error)
 
 	// Config returns a copy of the agent's configuration.
 	Config() BuildAgentConfig

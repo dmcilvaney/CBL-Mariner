@@ -35,8 +35,9 @@ func (c *ChrootAgent) Initialize(config *BuildAgentConfig) (err error) {
 // - inputFile is the SRPM to build.
 // - logName is the file name to save the package build log to.
 // - outArch is the architecture where the output binary will run
-// - dependencies is a list of dependencies that need to be installed before building.
-func (c *ChrootAgent) BuildPackage(inputFile, logName, outArch string, dependencies []string) (builtFiles []string, logFile string, err error) {
+// - nativeDependencies is a list of dependencies that need to be installed before building.
+// - targetDependencies is a list of dependencies that need to be installed into the target sysroot before building
+func (c *ChrootAgent) BuildPackage(inputFile, logName, outArch string, nativeDependencies, targetDependencies []string) (builtFiles []string, logFile string, err error) {
 	// On success, pkgworker will print a comma-seperated list of all RPMs built to stdout.
 	// This will be the last stdout line written.
 	const delimiter = ","
@@ -53,7 +54,7 @@ func (c *ChrootAgent) BuildPackage(inputFile, logName, outArch string, dependenc
 		logger.Log.Trace(lastStdoutLine)
 	}
 
-	args := serializeChrootBuildAgentConfig(c.config, inputFile, logFile, outArch, dependencies)
+	args := serializeChrootBuildAgentConfig(c.config, inputFile, logFile, outArch, nativeDependencies, targetDependencies)
 	err = shell.ExecuteLiveWithCallback(onStdout, logger.Log.Trace, c.config.Program, args...)
 
 	if err == nil && lastStdoutLine != "" {
@@ -74,7 +75,7 @@ func (c *ChrootAgent) Close() (err error) {
 }
 
 // serializeChrootBuildAgentConfig serializes a BuildAgentConfig into arguments usable by pkgworker.
-func serializeChrootBuildAgentConfig(config *BuildAgentConfig, inputFile, logFile, outArch string, dependencies []string) (serializedArgs []string) {
+func serializeChrootBuildAgentConfig(config *BuildAgentConfig, inputFile, logFile, outArch string, nativeDependencies, targetDependencies []string) (serializedArgs []string) {
 	serializedArgs = []string{
 		fmt.Sprintf("--input=%s", inputFile),
 		fmt.Sprintf("--work-dir=%s", config.WorkDir),
@@ -103,8 +104,12 @@ func serializeChrootBuildAgentConfig(config *BuildAgentConfig, inputFile, logFil
 		serializedArgs = append(serializedArgs, "--run-check")
 	}
 
-	for _, dependency := range dependencies {
-		serializedArgs = append(serializedArgs, fmt.Sprintf("--install-package=%s", dependency))
+	for _, nativeDependency := range nativeDependencies {
+		serializedArgs = append(serializedArgs, fmt.Sprintf("--install-package=%s", nativeDependency))
+	}
+
+	for _, targetDependency := range targetDependencies {
+		serializedArgs = append(serializedArgs, fmt.Sprintf("--target-install-package=%s", targetDependency))
 	}
 
 	return

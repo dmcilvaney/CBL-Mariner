@@ -31,22 +31,23 @@ const (
 )
 
 var (
-	app                  = kingpin.New("pkgworker", "A worker for building packages locally")
-	srpmFile             = exe.InputFlag(app, "Full path to the SRPM to build")
-	workDir              = app.Flag("work-dir", "The directory to create the build folder").Required().String()
-	workerTar            = app.Flag("worker-tar", "Full path to worker_chroot.tar.gz").Required().ExistingFile()
-	repoFile             = app.Flag("repo-file", "Full path to local.repo").Required().ExistingFile()
-	rpmsDirPath          = app.Flag("rpm-dir", "The directory to use as the local repo and to submit RPM packages to").Required().ExistingDir()
-	srpmsDirPath         = app.Flag("srpm-dir", "The output directory for source RPM packages").Required().String()
-	cacheDir             = app.Flag("cache-dir", "The cache directory containing downloaded dependency RPMS from CBL-Mariner Base").Required().ExistingDir()
-	noCleanup            = app.Flag("no-cleanup", "Whether or not to delete the chroot folder after the build is done").Bool()
-	distTag              = app.Flag("dist-tag", "The distribution tag the SPEC will be built with.").Required().String()
-	distroReleaseVersion = app.Flag("distro-release-version", "The distro release version that the SRPM will be built with").Required().String()
-	distroBuildNumber    = app.Flag("distro-build-number", "The distro build number that the SRPM will be built with").Required().String()
-	rpmmacrosFile        = app.Flag("rpmmacros-file", "Optional file path to an rpmmacros file for rpmbuild to use").ExistingFile()
-	runCheck             = app.Flag("run-check", "Run the check during package build").Bool()
-	packagesToInstall    = app.Flag("install-package", "Filepaths to RPM packages that should be installed before building.").Strings()
-	outArch              = app.Flag("out-arch", "Architecture of resulting package").String()
+	app                     = kingpin.New("pkgworker", "A worker for building packages locally")
+	srpmFile                = exe.InputFlag(app, "Full path to the SRPM to build")
+	workDir                 = app.Flag("work-dir", "The directory to create the build folder").Required().String()
+	workerTar               = app.Flag("worker-tar", "Full path to worker_chroot.tar.gz").Required().ExistingFile()
+	repoFile                = app.Flag("repo-file", "Full path to local.repo").Required().ExistingFile()
+	rpmsDirPath             = app.Flag("rpm-dir", "The directory to use as the local repo and to submit RPM packages to").Required().ExistingDir()
+	srpmsDirPath            = app.Flag("srpm-dir", "The output directory for source RPM packages").Required().String()
+	cacheDir                = app.Flag("cache-dir", "The cache directory containing downloaded dependency RPMS from CBL-Mariner Base").Required().ExistingDir()
+	noCleanup               = app.Flag("no-cleanup", "Whether or not to delete the chroot folder after the build is done").Bool()
+	distTag                 = app.Flag("dist-tag", "The distribution tag the SPEC will be built with.").Required().String()
+	distroReleaseVersion    = app.Flag("distro-release-version", "The distro release version that the SRPM will be built with").Required().String()
+	distroBuildNumber       = app.Flag("distro-build-number", "The distro build number that the SRPM will be built with").Required().String()
+	rpmmacrosFile           = app.Flag("rpmmacros-file", "Optional file path to an rpmmacros file for rpmbuild to use").ExistingFile()
+	runCheck                = app.Flag("run-check", "Run the check during package build").Bool()
+	packagesToInstall       = app.Flag("install-package", "Filepaths to RPM packages that should be installed before building.").Strings()
+	targetPackagesToInstall = app.Flag("target-install-package", "Filepaths to RPM packages that should be installed into target sysroot before building.").Strings()
+	outArch                 = app.Flag("out-arch", "Architecture of resulting package").String()
 
 	logFile  = exe.LogFileFlag(app)
 	logLevel = exe.LogLevelFlag(app)
@@ -75,7 +76,7 @@ func main() {
 	defines[rpm.DistroReleaseVersionDefine] = *distroReleaseVersion
 	defines[rpm.DistroBuildNumberDefine] = *distroBuildNumber
 
-	builtRPMs, err := buildSRPMInChroot(chrootDir, rpmsDirAbsPath, *workerTar, *srpmFile, *repoFile, *rpmmacrosFile, *outArch, defines, *noCleanup, *runCheck, *packagesToInstall)
+	builtRPMs, err := buildSRPMInChroot(chrootDir, rpmsDirAbsPath, *workerTar, *srpmFile, *repoFile, *rpmmacrosFile, *outArch, defines, *noCleanup, *runCheck, *packagesToInstall, *targetPackagesToInstall)
 	logger.PanicOnError(err, "Failed to build SRPM '%s'. For details see log file: %s .", *srpmFile, *logFile)
 
 	err = copySRPMToOutput(*srpmFile, srpmsDirAbsPath)
@@ -97,7 +98,7 @@ func copySRPMToOutput(srpmFilePath, srpmOutputDirPath string) (err error) {
 	return
 }
 
-func buildSRPMInChroot(chrootDir, rpmDirPath, workerTar, srpmFile, repoFile, rpmmacrosFile, outArch string, defines map[string]string, noCleanup, runCheck bool, packagesToInstall []string) (builtRPMs []string, err error) {
+func buildSRPMInChroot(chrootDir, rpmDirPath, workerTar, srpmFile, repoFile, rpmmacrosFile, outArch string, defines map[string]string, noCleanup, runCheck bool, packagesToInstall, targetPackagesToInstall []string) (builtRPMs []string, err error) {
 	const (
 		existingChrootDir = false
 		squashErrors      = false
@@ -131,7 +132,7 @@ func buildSRPMInChroot(chrootDir, rpmDirPath, workerTar, srpmFile, repoFile, rpm
 	}
 
 	err = chroot.Run(func() (err error) {
-		return buildRPMFromSRPMInChroot(srpmFileInChroot, outArch, runCheck, defines, packagesToInstall)
+		return buildRPMFromSRPMInChroot(srpmFileInChroot, outArch, runCheck, defines, packagesToInstall, targetPackagesToInstall)
 	})
 
 	if err != nil {
@@ -149,10 +150,14 @@ func buildSRPMInChroot(chrootDir, rpmDirPath, workerTar, srpmFile, repoFile, rpm
 	return
 }
 
-func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines map[string]string, packagesToInstall []string) (err error) {
+func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines map[string]string, packagesToInstall, targetPackagesToInstall []string) (err error) {
 	const (
 		sysrootDir = "/opt/cross/aarch64-mariner-linux-gnu/sysroot"
 	)
+
+	logger.Log.Debugf("packagesToInstall (%s)", packagesToInstall)
+	logger.Log.Debugf("targetPackagesToInstall (%s)", targetPackagesToInstall)
+
 	// Convert /localrpms into a repository that a package manager can use
 	err = rpmrepomanager.CreateRepo(chrootLocalRpmsDir)
 	if err != nil {
@@ -160,6 +165,9 @@ func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines m
 	}
 
 	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
 
 	// install any additional packages, such as build dependencies.
 	err = tdnfInstall(packagesToInstall, buildArch, "/")
@@ -168,7 +176,7 @@ func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines m
 	}
 
 	// Check if we are cross compiling. If so, populate the sysroot
-	if buildArch != outArch {
+	if (buildArch != outArch) && (outArch != "noarch") {
 		// Another hack. Adding a spot for initial sysroot packages. Should try
 		// to remove this for the final design.
 		initialSysroot := make([]string, 0)
@@ -184,12 +192,20 @@ func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines m
 		// the chroot but not installed into the sysroot
 		crossToolchain := make([]string, 0)
 		crossToolchain = append(crossToolchain, "aarch64-mariner-linux-gnu-cross-gcc")
+		// Hack to make glibc build. Apparently it needs perl(File::Find)
+		crossToolchain = append(crossToolchain, "perl(File::Find)")
 		err = tdnfInstall(crossToolchain, buildArch, "/")
 		if err != nil {
 			return
 		}
-		err = tdnfInstall(packagesToInstall, outArch, sysrootDir)
+		err = tdnfInstall(targetPackagesToInstall, outArch, sysrootDir)
 		if err != nil {
+			return
+		}
+	} else {
+		// If we are doing a native build but targetPackagesToInstall is not nil here, we goofed
+		if len(targetPackagesToInstall) != 0 {
+			err = fmt.Errorf("native build scenario detected but target packages to install is non-zero (%v)", targetPackagesToInstall)
 			return
 		}
 	}

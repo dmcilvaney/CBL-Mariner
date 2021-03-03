@@ -6,6 +6,7 @@ package schedulerutils
 import (
 	"fmt"
 	"path/filepath"
+	"runtime"
 	"sync"
 	"time"
 
@@ -14,6 +15,7 @@ import (
 	"microsoft.com/pkggen/internal/logger"
 	"microsoft.com/pkggen/internal/pkggraph"
 	"microsoft.com/pkggen/internal/retry"
+	"microsoft.com/pkggen/internal/rpm"
 	"microsoft.com/pkggen/scheduler/buildagents"
 )
 
@@ -95,20 +97,28 @@ func buildBuildNode(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, graphMu
 		}
 	}
 
-	dependencies := getBuildDependencies(node, pkgGraph, graphMutex)
-
+	nativeDependencies, targetDependencies, err := getBuildDependencies(node, pkgGraph, graphMutex)
+	if err != nil {
+		return
+	}
 	logger.Log.Infof("Building %s", baseSrpmName)
-	builtFiles, logFile, err = buildSRPMFile(agent, buildAttempts, node.SrpmPath, node.Architecture, dependencies)
+	builtFiles, logFile, err = buildSRPMFile(agent, buildAttempts, node.SrpmPath, node.Architecture, nativeDependencies, targetDependencies)
 	return
 }
 
 // getBuildDependencies returns a list of all dependencies that need to be installed before the node can be built.
-func getBuildDependencies(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, graphMutex *sync.RWMutex) (dependencies []string) {
+func getBuildDependencies(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, graphMutex *sync.RWMutex) (nativeDependencies, targetDependencies []string, err error) {
 	graphMutex.RLock()
 	defer graphMutex.RUnlock()
 
+	buildArch, err := rpm.GetRpmArch(runtime.GOARCH)
+	if err != nil {
+		return
+	}
+
 	// Use a map to avoid duplicate entries
-	dependencyLookup := make(map[string]bool)
+	nativeDependencyLookup := make(map[string]bool)
+	targetDependencyLookup := make(map[string]bool)
 
 	search := traverse.BreadthFirst{}
 
@@ -126,21 +136,28 @@ func getBuildDependencies(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, g
 			return
 		}
 
-		dependencyLookup[rpmPath] = true
+		if dependencyNode.Architecture == buildArch || dependencyNode.Architecture == "noarch" {
+			nativeDependencyLookup[rpmPath] = true
+		} else {
+			targetDependencyLookup[rpmPath] = true
+		}
 
 		return
 	})
 
-	dependencies = make([]string, 0, len(dependencyLookup))
-	for depName := range dependencyLookup {
-		dependencies = append(dependencies, depName)
+	nativeDependencies = make([]string, 0, len(nativeDependencyLookup))
+	for depName := range nativeDependencyLookup {
+		nativeDependencies = append(nativeDependencies, depName)
 	}
-
+	targetDependencies = make([]string, 0, len(targetDependencyLookup))
+	for depName := range targetDependencyLookup {
+		targetDependencies = append(targetDependencies, depName)
+	}
 	return
 }
 
 // buildSRPMFile sends an SRPM to a build agent to build.
-func buildSRPMFile(agent buildagents.BuildAgent, buildAttempts int, srpmFile, outArch string, dependencies []string) (builtFiles []string, logFile string, err error) {
+func buildSRPMFile(agent buildagents.BuildAgent, buildAttempts int, srpmFile, outArch string, nativeDependencies, targetDependencies []string) (builtFiles []string, logFile string, err error) {
 	const (
 		retryDuration = time.Second
 		logExtension  = "log"
@@ -148,7 +165,7 @@ func buildSRPMFile(agent buildagents.BuildAgent, buildAttempts int, srpmFile, ou
 
 	logBaseName := fmt.Sprintf("%s.%s.%s", filepath.Base(srpmFile), outArch, logExtension)
 	err = retry.Run(func() (buildErr error) {
-		builtFiles, logFile, buildErr = agent.BuildPackage(srpmFile, logBaseName, outArch, dependencies)
+		builtFiles, logFile, buildErr = agent.BuildPackage(srpmFile, logBaseName, outArch, nativeDependencies, targetDependencies)
 		return
 	}, buildAttempts, retryDuration)
 
