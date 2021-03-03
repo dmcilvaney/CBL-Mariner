@@ -1,10 +1,65 @@
 %global security_hardening nonow
 %define glibc_target_cpu %{_build}
 %define debug_package %{nil}
+
+# Globals which should be in a macro file.
+# These should be set programatically in the future.
+%global _host_arch      x86_64
+%global _target_arch    aarch64
+%global _tuple          %{_target_arch}-%{_vendor}-linux-gnu
+%global _cross_name     %{_target_arch}-%{_vendor}-linux-gnu
+
+# Folders which should be in our macro file
+%global _opt                /opt/
+%global _crossdir           /opt/cross/
+
+# Generally we include '/usr' in most paths.
+# Can we also use '/usr' for our paths? This will bring us in line with the
+# %%configure macro which sets these.
+#%%global _bindir            /bin
+#%%global _sbindir           /sbin
+#%%global _libdir            /lib
+#%%global _lib64dir          /lib64
+#%%global _libexecdir        /libexec
+#%%global _datadir           /share
+#%%global _docdir            /share/doc
+#%%global _includedir        /include
+#%%global _infodir           /share/info
+#%%global _mandir            /share/man
+#%%global _oldincludedir     /include
+
+
+# Why is this wrong? We get "x86_64-pc-linux-gnu" when eval'd, but our 
+# tools select "aarch64-linux-gnu"
+%global _host_vendor        %{nil}
+
+# If we want our cross compile aware packges to also support native, we
+# need logic to switch modes something like this:
+%if %{_target_arch} != %{_host_arch}
+%global _cross_prefix       %{_crossdir}%{_tuple}/
+%global _cross_sysroot      %{_crossdir}%{_tuple}/sysroot/
+%global _cross_includedir   %{_cross_sysroot}/include/
+%global _cross_infodir      %{_crossdir}%{_tuple}/share/info
+%global _cross_bindir       %{_crossdir}%{_tuple}/bin
+%global _cross_libdir       %{_tuple}/lib
+%global _tuple_name         %{_tuple}-
+%global __strip %{_cross_prefix}/bin/%{_tuple_name}strip
+%global __objdump %{_cross_prefix}/bin/%{_tuple_name}objdump
+%else
+%global _cross_prefix       %{nil}
+%global _cross_exec_prefix  %{nil}
+%global _cross_sysroot      %{nil}
+%global _cross_includedir   %{_includedir}
+%global _cross_infodir      %{_infodir}
+%global _cross_bindir       %{_bindir}
+%global _cross_libdir       %{_libdir}
+%global _tuple_name         %{nil}
+%endif
+
 Summary:        Main C library
 Name:           glibc
 Version:        2.28
-Release:        14%{?dist}
+Release:        15%{?dist}
 License:        LGPLv2+
 Vendor:         Microsoft Corporation
 Distribution:   Mariner
@@ -133,6 +188,9 @@ chmod +x find_requires.sh
 #___EOF
 
 %build
+%if %{_target_arch} != %{_host_arch}
+export PATH="%{_cross_bindir}":$PATH 
+%endif
 CFLAGS="`echo " %{build_cflags} " | sed 's/-Wp,-D_FORTIFY_SOURCE=2//'`"
 CXXFLAGS="`echo " %{build_cxxflags} " | sed 's/-Wp,-D_FORTIFY_SOURCE=2//'`"
 export CFLAGS
@@ -141,6 +199,10 @@ export CXXFLAGS
 cd %{_builddir}/%{name}-build
 ../%{name}-%{version}/configure \
         --prefix=%{_prefix} \
+%if %{_target_arch} != %{_host_arch}
+		--host=%{_tuple} \
+		--with-headers=%{_cross_includedir} \
+%endif
         --disable-profile \
         --disable-werror \
         --enable-kernel=3.2 \
@@ -201,12 +263,24 @@ popd
 pushd localedata
 # Generate out of locale-archive an (en_US.) UTF-8 locale
 mkdir -p %{buildroot}%{_lib}/locale
-I18NPATH=. GCONV_PATH=../../glibc-build/iconvdata LC_ALL=C ../../glibc-build/locale/localedef --no-archive --prefix=%{buildroot} -A ../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
+%if %{_target_arch} != %{_host_arch}
+# Use native build system's localedef
+export LOCALEDEF=localedef
+%else
+export LOCALEDEF=../../glibc-build/locale/localedef
+%endif
+I18NPATH=. GCONV_PATH=../../glibc-build/iconvdata LC_ALL=C ${LOCALEDEF} --no-archive --prefix=%{buildroot} -A ../intl/locale.alias -i locales/en_US -c -f charmaps/UTF-8 en_US.UTF-8
 mv %{buildroot}%{_lib}/locale/en_US.utf8 %{buildroot}%{_lib}/locale/en_US.UTF-8
 popd
 # to do not depend on /bin/bash
 sed -i 's@#! /bin/bash@#! /bin/sh@' %{buildroot}%{_bindir}/ldd
 sed -i 's@#!/bin/bash@#!/bin/sh@' %{buildroot}%{_bindir}/tzselect
+
+%if %{_target_arch} != %{_host_arch}
+# ldconfig typically generates the ld.so.cache but we cannot run the target version's ldconfig,
+# so just touch the file
+touch %{buildroot}/%{_sysconfdir}/ld.so.cache
+%endif
 
 %check
 cd %{_builddir}/glibc-build
@@ -305,6 +379,9 @@ grep "^FAIL: nptl/tst-eintr1" tests.sum >/dev/null && n=$((n+1)) ||:
 %defattr(-,root,root)
 
 %changelog
+* Tue Mar 02 2021 Chris Co <chrco@microsoft.com> - 2.28-15
+- Enable cross compilation
+
 * Thu Dec 10 2020 Joe Schmitt <joschmit@microsoft.com> - 2.28-14
 - Provide isa version of glibc-static.
 
