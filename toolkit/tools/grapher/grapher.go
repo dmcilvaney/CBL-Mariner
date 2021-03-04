@@ -64,7 +64,7 @@ func main() {
 	}
 
 	// Add a default "ALL" goal to build everything local
-	_, err = depGraph.AddGoalNode("ALL", nil, *targetArch, *strictGoals)
+	_, err = depGraph.AddGoalNode("ALL", nil, "*", *strictGoals)
 	if err != nil {
 		logger.Log.Panic(err)
 	}

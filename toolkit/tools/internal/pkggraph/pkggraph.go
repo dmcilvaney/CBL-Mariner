@@ -468,11 +468,42 @@ func (g *PkgGraph) RemovePkgNode(pkgNode *PkgNode) {
 	g.removePkgNodeFromLookup(pkgNode)
 }
 
-// FindDoubleConditionalPkgNodeFromPkg has the same behavior as FindConditionalPkgNodeFromPkg but supports two conditionals
+// GetAvailableArchForPkg returns a list of all available architectures for a package name
+func (g *PkgGraph) GetAvailableArchForPkg(pkgVer *pkgjson.PackageVer) (arches []string, err error) {
+	foundArch := make(map[string]bool)
+	packageNodes := g.lookupTable()[pkgVer.Name]
+	for _, node := range packageNodes {
+		if node.RunNode == nil {
+			err = fmt.Errorf("found orphaned build node '%s' for name '%s'", node.BuildNode, pkgVer.Name)
+			return
+		}
+
+		foundArch[node.Arch] = true
+	}
+
+	for k := range foundArch {
+		arches = append(arches, k)
+	}
+
+	return
+}
+
+// FindDoubleConditionalPkgNodeFromPkg has the same behavior as FindConditionalPkgNodeFromPkg but supports two conditionals.
+// arch must be explicitly set, "*" is not supported for package lookup. (Different architectures may have different versions)
 func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVer, arch string) (lookupEntry *LookupNode, err error) {
 	var (
 		requestInterval, nodeInterval pkgjson.PackageVerInterval
 	)
+
+	if arch == "" {
+		err = fmt.Errorf("must select architecture for package lookup")
+		return
+	}
+	if arch == "*" {
+		err = fmt.Errorf("wildcard architecture is not supported for package lookup")
+		return
+	}
+
 	requestInterval, err = pkgVer.Interval()
 	if err != nil {
 		return
@@ -502,10 +533,21 @@ func (g *PkgGraph) FindDoubleConditionalPkgNodeFromPkg(pkgVer *pkgjson.PackageVe
 // FindExactPkgNodeFromPkg attempts to find a LookupNode which has the exactly
 // correct version information listed in the PackageVer structure. Returns nil
 // if no lookup entry is found.
+// arch must be explicitly set, "*" is not supported for package lookup. (Different architectures may have different versions)
 func (g *PkgGraph) FindExactPkgNodeFromPkg(pkgVer *pkgjson.PackageVer, arch string) (lookupEntry *LookupNode, err error) {
 	var (
 		requestInterval, nodeInterval pkgjson.PackageVerInterval
 	)
+
+	if arch == "" {
+		err = fmt.Errorf("must select architecture for package lookup")
+		return
+	}
+	if arch == "*" {
+		err = fmt.Errorf("wildcard architecture is not supported for package lookup")
+		return
+	}
+
 	requestInterval, err = pkgVer.Interval()
 	if err != nil {
 		return
@@ -957,7 +999,45 @@ func (g *PkgGraph) AddMetaNode(from []*PkgNode, to []*PkgNode) (metaNode *PkgNod
 	return
 }
 
+// Add a goal node for all nodes in the graph with matching architecture.
+// arch maybe be set to "*" to acccept any architecture.
+func (g *PkgGraph) goalAllNodes(goalName string, arch string) (goalNode *PkgNode, err error) {
+	// Handle failures in SetEdge() and AddNode()
+	defer func() {
+		if r := recover(); r != nil {
+			logger.Log.Panicf("Adding edge failed for goal node.")
+		}
+	}()
+
+	// Create goal node and add an edge to all requested packages
+	goalNode = &PkgNode{
+		State:      StateMeta,
+		Type:       TypeGoal,
+		SrpmPath:   "<NO_SRPM_PATH>",
+		RpmPath:    "<NO_RPM_PATH>",
+		SourceRepo: "<NO_REPO>",
+		nodeID:     g.NewNode().ID(),
+		GoalName:   goalName,
+	}
+	goalNode.This = goalNode
+	g.AddNode(goalNode)
+
+	for _, node := range g.AllRunNodes() {
+		logger.Log.Tracef("\t%s-%s %d", node.VersionedPkg.Name, node.VersionedPkg.Version, node.ID())
+		// Only pick the nodes which have a matching arch
+		if arch == "*" || node.Architecture == arch || node.Architecture == "noarch" {
+			logger.Log.Tracef("\t\tADDING")
+			goalEdge := g.NewEdge(goalNode, node)
+			g.SetEdge(goalEdge)
+		} else {
+			logger.Log.Tracef("\t\tSKIPPING due to incorrect arch: (%s)", node.Architecture)
+		}
+	}
+	return
+}
+
 // AddGoalNode adds a goal node to the graph which links to existing nodes. An empty package list will add an edge to all nodes
+// arch maybe be set to "*" to acccept any architecture.
 func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, arch string, strict bool) (goalNode *PkgNode, err error) {
 	// Check if we already have a goal node with the requested name
 	if g.FindGoalNode(goalName) != nil {
@@ -965,25 +1045,17 @@ func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, 
 		return
 	}
 
-	goalSet := make(map[*pkgjson.PackageVer]bool)
-	if len(packages) > 0 {
-		logger.Log.Infof("Adding \"%s\" goal", goalName)
-		for _, pkg := range packages {
-			logger.Log.Tracef("\t%s-%s", pkg.Name, pkg.Version)
-			goalSet[pkg] = true
-		}
-	} else {
+	// Handle finding all nodes seperately
+	if len(packages) == 0 {
 		logger.Log.Infof("Adding \"%s\" goal for all nodes", goalName)
-		for _, node := range g.AllRunNodes() {
-			logger.Log.Tracef("\t%s-%s %d", node.VersionedPkg.Name, node.VersionedPkg.Version, node.ID())
-			// Only pick the nodes which have a matching arch
-			if node.Architecture == arch || node.Architecture == "noarch" {
-				logger.Log.Tracef("\t\tADDING")
-				goalSet[node.VersionedPkg] = true
-			} else {
-				logger.Log.Tracef("\t\tSKIPPING due to incorrect arch: (%s)", node.Architecture)
-			}
-		}
+		return g.goalAllNodes(goalName, arch)
+	}
+
+	logger.Log.Infof("Adding \"%s\" goal", goalName)
+	goalSet := make(map[*pkgjson.PackageVer]bool)
+	for _, pkg := range packages {
+		logger.Log.Tracef("\t%s-%s", pkg.Name, pkg.Version)
+		goalSet[pkg] = true
 	}
 
 	// Handle failures in SetEdge() and AddNode()
@@ -1007,30 +1079,44 @@ func (g *PkgGraph) AddGoalNode(goalName string, packages []*pkgjson.PackageVer, 
 	g.AddNode(goalNode)
 
 	for pkg := range goalSet {
-		var existingNode *LookupNode
-		// Try to find an exact match first (to make sure we match revision number exactly, if available)
-		existingNode, err = g.FindExactPkgNodeFromPkg(pkg, arch)
-		if err != nil {
-			return
-		}
-		if existingNode == nil {
-			// Try again with a more general search
-			existingNode, err = g.FindBestPkgNode(pkg, arch)
+		var (
+			existingNode *LookupNode
+			arches       []string
+		)
+		if arch == "*" {
+			arches, err = g.GetAvailableArchForPkg(pkg)
 			if err != nil {
 				return
 			}
-		}
-
-		if existingNode != nil {
-			logger.Log.Debugf("Found %s to satisfy %s", existingNode.RunNode, pkg)
-			goalEdge := g.NewEdge(goalNode, existingNode.RunNode)
-			g.SetEdge(goalEdge)
-			goalSet[pkg] = false
 		} else {
-			logger.Log.Warnf("Could not goal package %+v for arch %s", pkg, arch)
-			if strict {
-				logger.Log.Warnf("Missing %+v", pkg)
-				err = fmt.Errorf("could not find all goal nodes with strict=true")
+			arches = []string{arch}
+		}
+		// Iterate through all the arches we are searching for
+		for _, archItr := range arches {
+			// Try to find an exact match first (to make sure we match revision number exactly, if available)
+			existingNode, err = g.FindExactPkgNodeFromPkg(pkg, archItr)
+			if err != nil {
+				return
+			}
+			if existingNode == nil {
+				// Try again with a more general search
+				existingNode, err = g.FindBestPkgNode(pkg, archItr)
+				if err != nil {
+					return
+				}
+			}
+
+			if existingNode != nil {
+				logger.Log.Debugf("Found %s to satisfy %s", existingNode.RunNode, pkg)
+				goalEdge := g.NewEdge(goalNode, existingNode.RunNode)
+				g.SetEdge(goalEdge)
+				goalSet[pkg] = false
+			} else {
+				logger.Log.Warnf("Could not goal package %+v for arch %s", pkg, arch)
+				if strict {
+					logger.Log.Warnf("Missing %+v", pkg)
+					err = fmt.Errorf("could not find all goal nodes with strict=true")
+				}
 			}
 		}
 	}

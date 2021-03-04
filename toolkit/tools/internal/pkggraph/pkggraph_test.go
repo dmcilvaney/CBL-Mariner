@@ -470,6 +470,37 @@ func TestDisallowMultiConditionals(t *testing.T) {
 	assert.Error(t, err)
 }
 
+func TestBadArchPackageLookups(t *testing.T) {
+	g := NewPkgGraph()
+	err := addNodesHelper(g, allNodes)
+	assert.NoError(t, err)
+	assert.NotNil(t, g)
+
+	_, err = g.FindBestPkgNode(&pkgA, "*")
+	assert.Error(t, err)
+	assert.Equal(t, "wildcard architecture is not supported for package lookup", err.Error())
+
+	_, err = g.FindDoubleConditionalPkgNodeFromPkg(&pkgA, "*")
+	assert.Error(t, err)
+	assert.Equal(t, "wildcard architecture is not supported for package lookup", err.Error())
+
+	_, err = g.FindExactPkgNodeFromPkg(&pkgA, "*")
+	assert.Error(t, err)
+	assert.Equal(t, "wildcard architecture is not supported for package lookup", err.Error())
+
+	_, err = g.FindBestPkgNode(&pkgA, "")
+	assert.Error(t, err)
+	assert.Equal(t, "must select architecture for package lookup", err.Error())
+
+	_, err = g.FindDoubleConditionalPkgNodeFromPkg(&pkgA, "")
+	assert.Error(t, err)
+	assert.Equal(t, "must select architecture for package lookup", err.Error())
+
+	_, err = g.FindExactPkgNodeFromPkg(&pkgA, "")
+	assert.Error(t, err)
+	assert.Equal(t, "must select architecture for package lookup", err.Error())
+}
+
 // Check basic lookup using the C package which as two versions.
 func TestLookupNodeBasic(t *testing.T) {
 	g := NewPkgGraph()
@@ -708,6 +739,174 @@ func TestDuplicateGoal(t *testing.T) {
 
 	_, err = g.AddGoalNode("test", nil, "test_arch", false)
 	assert.Error(t, err)
+}
+
+func TestGoalSpecificArchAllNodes(t *testing.T) {
+	n1 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n1Run := buildRunNodeHelper(n1)
+	n1Run.Architecture = "arch1"
+	n2 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n2Run := buildRunNodeHelper(n2)
+	n2Run.Architecture = "arch2"
+	n3 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n3Run := buildRunNodeHelper(n3)
+	n3Run.Architecture = "arch3"
+
+	g := NewPkgGraph()
+	assert.NotNil(t, g)
+
+	_, err := addNodeToGraphHelper(g, n1Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n2Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n3Run)
+	assert.NoError(t, err)
+
+	goal, err := g.AddGoalNode("test", nil, "arch2", false)
+	assert.NoError(t, err)
+	assert.NotNil(t, goal)
+	assert.Equal(t, 3+1, len(g.AllNodes()))
+
+	goalNodes := g.AllNodesFrom(goal)
+	assert.Equal(t, 1+1, len(goalNodes))
+
+	for _, mustHave := range []*PkgNode{n2Run} {
+		found := false
+		for _, n := range g.AllNodesFrom(goal) {
+			found = found || mustHave.Equal(n)
+		}
+		assert.True(t, found)
+	}
+}
+
+func TestGoalWildCardArchAllNodes(t *testing.T) {
+	n1 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n1Run := buildRunNodeHelper(n1)
+	n1Run.Architecture = "arch1"
+	n2 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n2Run := buildRunNodeHelper(n2)
+	n2Run.Architecture = "arch2"
+	n3 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n3Run := buildRunNodeHelper(n3)
+	n3Run.Architecture = "arch3"
+
+	g := NewPkgGraph()
+	assert.NotNil(t, g)
+
+	_, err := addNodeToGraphHelper(g, n1Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n2Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n3Run)
+	assert.NoError(t, err)
+
+	goal, err := g.AddGoalNode("test", nil, "*", false)
+	assert.NoError(t, err)
+	assert.NotNil(t, goal)
+	assert.Equal(t, 3+1, len(g.AllNodes()))
+
+	goalNodes := g.AllNodesFrom(goal)
+	assert.Equal(t, 3+1, len(goalNodes))
+
+	for _, mustHave := range []*PkgNode{n1Run, n2Run, n3Run} {
+		found := false
+		for _, n := range g.AllNodesFrom(goal) {
+			found = found || mustHave.Equal(n)
+		}
+		assert.True(t, found)
+	}
+}
+
+func TestGoalSpecificArchSpecificNode(t *testing.T) {
+	n1 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n1Run := buildRunNodeHelper(n1)
+	n1Run.Architecture = "arch1"
+	n2 := &pkgjson.PackageVer{Name: "specific", Version: "1"}
+	n2Run := buildRunNodeHelper(n2)
+	n2Run.Architecture = "arch2"
+	n3 := &pkgjson.PackageVer{Name: "specific", Version: "1"}
+	n3Run := buildRunNodeHelper(n3)
+	n3Run.Architecture = "arch3"
+
+	g := NewPkgGraph()
+	assert.NotNil(t, g)
+
+	_, err := addNodeToGraphHelper(g, n1Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n2Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n3Run)
+	assert.NoError(t, err)
+
+	goal, err := g.AddGoalNode("test", []*pkgjson.PackageVer{n2}, "arch2", false)
+	assert.NoError(t, err)
+	assert.NotNil(t, goal)
+	assert.Equal(t, 3+1, len(g.AllNodes()))
+
+	goalNodes := g.AllNodesFrom(goal)
+	assert.Equal(t, 1+1, len(goalNodes))
+
+	for _, mustHave := range []*PkgNode{n2Run} {
+		found := false
+		for _, n := range g.AllNodesFrom(goal) {
+			found = found || mustHave.Equal(n)
+		}
+		assert.True(t, found)
+	}
+
+	goal, err = g.AddGoalNode("test2", []*pkgjson.PackageVer{{Name: "specific"}}, "arch3", false)
+	assert.NoError(t, err)
+	assert.NotNil(t, goal)
+	assert.Equal(t, 3+1+1, len(g.AllNodes()))
+
+	goalNodes = g.AllNodesFrom(goal)
+	assert.Equal(t, 1+1, len(goalNodes))
+
+	for _, mustHave := range []*PkgNode{n3Run} {
+		found := false
+		for _, n := range g.AllNodesFrom(goal) {
+			found = found || mustHave.Equal(n)
+		}
+		assert.True(t, found)
+	}
+}
+
+func TestGoalWildcardArchSpecificNode(t *testing.T) {
+	n1 := &pkgjson.PackageVer{Name: "n", Version: "1"}
+	n1Run := buildRunNodeHelper(n1)
+	n1Run.Architecture = "arch1"
+	n2 := &pkgjson.PackageVer{Name: "specific", Version: "1"}
+	n2Run := buildRunNodeHelper(n2)
+	n2Run.Architecture = "arch2"
+	n3 := &pkgjson.PackageVer{Name: "specific", Version: "1"}
+	n3Run := buildRunNodeHelper(n3)
+	n3Run.Architecture = "arch3"
+
+	g := NewPkgGraph()
+	assert.NotNil(t, g)
+
+	_, err := addNodeToGraphHelper(g, n1Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n2Run)
+	assert.NoError(t, err)
+	_, err = addNodeToGraphHelper(g, n3Run)
+	assert.NoError(t, err)
+
+	goal, err := g.AddGoalNode("test", []*pkgjson.PackageVer{{Name: "specific"}}, "*", false)
+	assert.NoError(t, err)
+	assert.NotNil(t, goal)
+	assert.Equal(t, 3+1, len(g.AllNodes()))
+
+	goalNodes := g.AllNodesFrom(goal)
+	assert.Equal(t, 2+1, len(goalNodes))
+
+	for _, mustHave := range []*PkgNode{n2Run, n3Run} {
+		found := false
+		for _, n := range g.AllNodesFrom(goal) {
+			found = found || mustHave.Equal(n)
+		}
+		assert.True(t, found)
+	}
 }
 
 // Search for packages to add to the goal node

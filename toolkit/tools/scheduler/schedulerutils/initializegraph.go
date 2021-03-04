@@ -73,7 +73,7 @@ func OptimizeGraph(pkgGraph *pkggraph.PkgGraph, targetArch string, canUseCachedI
 		}
 
 		// Create a solvable ALL goal node
-		goalNode, err = optimizedGraph.AddGoalNode(allGoalNodeName, nil, targetArch, true)
+		goalNode, err = optimizedGraph.AddGoalNode(allGoalNodeName, nil, "*", true)
 		if err != nil {
 			logger.Log.Warnf("Failed to add goal node (%s), error: %s", allGoalNodeName, err)
 			return
