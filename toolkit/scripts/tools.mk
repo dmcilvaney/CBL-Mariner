@@ -98,7 +98,7 @@ go-mod-tidy:
 	cd $(TOOLS_DIR) && go mod tidy
 # Runs go fmt inside each matching directory
 go-fmt-all:
-	cd $(TOOLS_DIR) && go fmt ./...
+	cd $(TOOLS_DIR) && go fmt ./... && gofmt -s -w ./
 
 # Formats the test coverage for the tools
 .PHONY: $(BUILD_DIR)/tools/all_tools.coverage
