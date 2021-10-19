@@ -1,7 +1,7 @@
 Summary:        Open Source Security Compliance Solution
 Name:           openscap
 Version:        1.3.1
-Release:        7%{?dist}
+Release:        8%{?dist}
 License:        LGPLv2+
 Vendor:         Microsoft Corporation
 Distribution:   Mariner
@@ -11,6 +11,7 @@ Source0:        https://github.com/OpenSCAP/openscap/releases/download/%{version
 BuildRequires:  bzip2-devel
 BuildRequires:  cmake
 BuildRequires:  curl-devel
+BuildRequires:  dbus-devel
 BuildRequires:  libacl-devel
 BuildRequires:  libcap-devel
 BuildRequires:  libgcrypt-devel
@@ -112,6 +113,9 @@ find %{buildroot} -type f -name "*.la" -delete -print
 %{python3_sitelib}/*
 
 %changelog
+* Tue Oct 19 2021 Daniel McIlvaney <damcilva@microsoft.com> - 1.3.1-8
+- Add BuildRequires debus-devel to support systemd unit module
+
 * Fri Jul 23 2021 Thomas Crain <thcrain@microsoft.com> - 1.3.1-7
 - Add provides for scanner subpackage from base package
 - Remove openscap-python python2 subpackage
