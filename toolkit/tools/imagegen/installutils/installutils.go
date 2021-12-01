@@ -1477,9 +1477,17 @@ func selinuxUpdateConfig(systemConfig configuration.SystemConfig, installChroot 
 		configFile     = "etc/selinux/config"
 		selinuxPattern = "^SELINUX=.*"
 	)
+	var mode string
+
+	switch systemConfig.KernelCommandLine.SELinux {
+	case configuration.SELinuxEnforcing, configuration.SELinuxForceEnforcing:
+		mode = configuration.SELinuxEnforcing.String()
+	case configuration.SELinuxPermissive:
+		mode = configuration.SELinuxPermissive.String()
+	}
 
 	selinuxConfigPath := filepath.Join(installChroot.RootDir(), configFile)
-	selinuxMode := fmt.Sprintf("SELINUX=%s", systemConfig.KernelCommandLine.SELinux)
+	selinuxMode := fmt.Sprintf("SELINUX=%s", mode)
 	err = sed(selinuxPattern, selinuxMode, "`", selinuxConfigPath)
 	return
 }
@@ -1493,6 +1501,8 @@ func selinuxRelabelFiles(systemConfig configuration.SystemConfig, installChroot 
 	var listOfMountsToLabel []string
 
 	// Search through all our mount points for supported filesystem types
+	// Note for the future: SELinux can support any of {btrfs, encfs, ext2-4, f2fs, jffs2, jfs, ubifs, xfs, zfs}, but the build system currently
+	//     only supports the below cases:
 	for mount, fsType := range mountPointToFsTypeMap {
 		switch fsType {
 		case "ext2", "ext3", "ext4":
@@ -1836,14 +1846,18 @@ func setGrubCfgIMA(grubPath string, kernelCommandline configuration.KernelComman
 
 func setGrubCfgSELinux(grubPath string, kernelCommandline configuration.KernelCommandLine) (err error) {
 	const (
-		selinuxPattern  = "{{.SELinux}}"
-		selinuxSettings = "lsm=selinux selinux=1 security=selinux"
+		selinuxPattern     = "{{.SELinux}}"
+		selinuxSettings    = "lsm=selinux selinux=1"
+		selinuxForceEnable = "enforcing=1"
 	)
 	var selinux string
 
-	if kernelCommandline.SELinux != configuration.SELinuxOff {
+	switch kernelCommandline.SELinux {
+	case configuration.SELinuxForceEnforcing:
+		selinux = fmt.Sprintf("%s %s", selinuxSettings, selinuxForceEnable)
+	case configuration.SELinuxPermissive, configuration.SELinuxEnforcing:
 		selinux = selinuxSettings
-	} else {
+	case configuration.SELinuxOff:
 		selinux = ""
 	}
 
