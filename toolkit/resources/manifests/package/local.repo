@@ -13,3 +13,11 @@ enabled=1
 gpgcheck=0
 skip_if_unavailable=1
 sslverify=0
+
+[main-latest-repo]
+name=main Latest Dev Repo
+baseurl=https://BADcblmarinerdevrepo.blob.core.windows.net/main-latest/RPMS
+enabled=1
+gpgcheck=0
+sslverify=1
+# Repofile installed from build 2.0.20220114-main-158382
