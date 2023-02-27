@@ -8,7 +8,7 @@
 
 Summary:        Linux Kernel for HCI
 Name:           kernel-hci
-Version:        5.15.77.1
+Version:        5.15.94.1
 Release:        1%{?dist}
 License:        GPLv2
 Vendor:         Microsoft Corporation
@@ -97,6 +97,14 @@ Requires:       %{name} = %{version}-%{release}
 
 %description drivers-accessibility
 This package contains the Linux kernel accessibility support
+
+%package drivers-gpu
+Summary:        Kernel gpu modules
+Group:          System Environment/Kernel
+Requires:       %{name} = %{version}-%{release}
+
+%description drivers-gpu
+This package contains the Linux kernel gpu support
 
 %package drivers-sound
 Summary:        Kernel Sound modules
@@ -237,7 +245,7 @@ install -vm 600 arch/x86/boot/bzImage %{buildroot}/boot/vmlinuz-%{uname_r}
 install -vm 400 System.map %{buildroot}/boot/System.map-%{uname_r}
 install -vm 600 .config %{buildroot}/boot/config-%{uname_r}
 cp -r Documentation/*        %{buildroot}%{_defaultdocdir}/linux-%{uname_r}
-install -vm 644 vmlinux %{buildroot}%{_libdir}/debug/lib/modules/%{uname_r}/vmlinux-%{uname_r}
+install -vm 744 vmlinux %{buildroot}%{_libdir}/debug/lib/modules/%{uname_r}/vmlinux-%{uname_r}
 # `perf test vmlinux` needs it
 ln -s vmlinux-%{uname_r} %{buildroot}%{_libdir}/debug/lib/modules/%{uname_r}/vmlinux
 
@@ -323,6 +331,9 @@ ln -sf linux-%{uname_r}.cfg /boot/mariner.cfg
 %post drivers-accessibility
 /sbin/depmod -a %{uname_r}
 
+%post drivers-gpu
+/sbin/depmod -a %{uname_r}
+
 %post drivers-sound
 /sbin/depmod -a %{uname_r}
 
@@ -356,6 +367,10 @@ ln -sf linux-%{uname_r}.cfg /boot/mariner.cfg
 %files drivers-accessibility
 %defattr(-,root,root)
 /lib/modules/%{uname_r}/kernel/drivers/accessibility
+
+%files drivers-gpu
+%defattr(-,root,root)
+/lib/modules/%{uname_r}/kernel/drivers/gpu
 
 %files drivers-sound
 %defattr(-,root,root)
@@ -393,6 +408,43 @@ ln -sf linux-%{uname_r}.cfg /boot/mariner.cfg
 %{_sysconfdir}/bash_completion.d/bpftool
 
 %changelog
+* Wed Feb 22 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.94.1-1
+- Auto-upgrade to 5.15.94.1
+
+* Tue Feb 21 2023 Rachel Menge <rachelmenge@microsoft.com> - 5.15.92.1-2
+- Install vmlinux as root executable for debuginfo
+
+* Mon Feb 06 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.92.1-1
+- Auto-upgrade to 5.15.92.1
+
+* Wed Jan 25 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.90.1-1
+- Auto-upgrade to 5.15.90.1
+
+* Sat Jan 14 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.87.1-1
+- Auto-upgrade to 5.15.87.1
+
+* Tue Jan 03 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.86.1-1
+- Auto-upgrade to 5.15.86.1
+
+* Fri Dec 23 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.85.1-1
+- Auto-upgrade to 5.15.85.1
+
+* Tue Dec 13 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.82.1-1
+- Auto-upgrade to 5.15.82.1
+
+* Wed Dec 07 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.81.1-1
+- Auto-upgrade to 5.15.81.1
+
+* Tue Nov 29 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.80.1-1
+- Auto-upgrade to 5.15.80.1
+
+* Fri Nov 18 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.79.1-1
+- Auto-upgrade to 5.15.79.1
+
+* Mon Nov 14 2022 Vince Perri <viperri@microsoft.com> - 5.15.77.1-2
+- Turn on Configs for different TCP algorithms
+- Package gpu kernel modules in new package kernel-drivers-gpu
+
 * Tue Nov 08 2022 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 5.15.77.1-1
 - Auto-upgrade to 5.15.77.1
 
