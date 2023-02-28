@@ -96,9 +96,6 @@ func (d *Disk) IsValid() (err error) {
 		return fmt.Errorf("invalid [Disk]: %w", err)
 	}
 
-	// if err = disk.PartitionTableType.IsValid(); err != nil {
-	// 	return
-	// }
 	// for _, artifact := range disk.Artifacts {
 	// 	if err = artifact.IsValid(); err != nil {
 	// 		return
@@ -114,6 +111,11 @@ func (d *Disk) IsValid() (err error) {
 	// 		return
 	// 	}
 	// }
+
+	if err = d.TargetDisk.IsValid(); err != nil {
+		return
+	}
+
 	return
 }
 
