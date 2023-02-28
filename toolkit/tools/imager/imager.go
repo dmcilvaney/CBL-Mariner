@@ -349,9 +349,6 @@ func setupRootFS(outputDir, installRoot string) (extraMountPoints []*safechroot.
 //   - encryptedRoot: An EncryptedRootDevice struct containing information about the encrypted root device, or nil if root is not encrypted
 //   - readOnlyRoot: A VerityDevice struct containing information about the read-only root device, or nil if root is not read-only
 func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, disks []configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot) (diskDevPaths []string, partIDToDevPathMap, partIDToFsTypeMap map[string]string, areDisksLoopDevices []bool, encryptedRoot diskutils.EncryptedRootDevice, readOnlyRoot diskutils.VerityDevice, err error) {
-	const (
-		realDiskType = "path"
-	)
 	var (
 		haveSetReadonlyRoot  bool = false
 		haveSetEncryptedRoot bool = false
@@ -369,7 +366,7 @@ func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, disk
 		)
 		areDisksLoopDevices[discNum] = false
 
-		if diskConfig.TargetDisk.Type == realDiskType {
+		if diskConfig.TargetDisk.Type == configuration.TargetDiskTypePath {
 			if liveInstallFlag {
 				newDiskDevPath = diskConfig.TargetDisk.Value
 				newPartIDToDevPathMap, newPartIDToFsTypeMap, newEncryptedRoot, newReadOnlyRoot, err = setupRealDisk(newDiskDevPath, diskConfig, rootEncryption, readOnlyRootConfig)
