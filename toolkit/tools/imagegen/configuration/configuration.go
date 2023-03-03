@@ -221,6 +221,38 @@ func checkInvalidMountIdentifiers(config *Config) (err error) {
 	return
 }
 
+func checkRaidDisk(config *Config, disk *Disk) (err error) {
+	// Make sure that all the component partitions exist
+	for _, partID := range disk.TargetDisk.RaidConfig.ComponentPartIDs {
+		if config.GetDiskPartByID(partID) == nil {
+			return fmt.Errorf("RAID component partition '%s' does not exist", partID)
+		}
+	}
+	return
+}
+
+// validateAllRaidDisks makes sure that all RAID disks have a unique ID and that the RAID configuration is valid.
+func validateAllRaidDisks(config *Config) (err error) {
+	raidIDs := make(map[string]bool)
+	for _, disk := range config.Disks {
+		if disk.IsRaidDisk() {
+			// Check the config
+			err = checkRaidDisk(config, &disk)
+			if err != nil {
+				return fmt.Errorf("invalid [Disks] RAID configuration: %w", err)
+			}
+
+			// Check for duplicate IDs
+			raidID := disk.TargetDisk.RaidConfig.RaidID
+			if raidIDs[raidID] {
+				return fmt.Errorf("found multiple [Disks] with the same [Raid] ID '%s'", raidID)
+			}
+			raidIDs[raidID] = true
+		}
+	}
+	return
+}
+
 // IsValid returns an error if the Config is not valid
 func (c *Config) IsValid() (err error) {
 	for _, disk := range c.Disks {
@@ -254,6 +286,12 @@ func (c *Config) IsValid() (err error) {
 	if len(c.SystemConfigs) == 0 {
 		return fmt.Errorf("config file must provide at least one system configuration inside the [SystemConfigs] field")
 	}
+
+	err = validateAllRaidDisks(c)
+	if err != nil {
+		return fmt.Errorf("invalid [Config]: %w", err)
+	}
+
 	for _, sysConfig := range c.SystemConfigs {
 		if err = sysConfig.IsValid(); err != nil {
 			return fmt.Errorf("invalid [SystemConfigs]: %w", err)

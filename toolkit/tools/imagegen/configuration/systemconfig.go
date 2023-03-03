@@ -65,6 +65,16 @@ func (s *SystemConfig) GetMountpointPartitionSetting(mountPoint string) (partiti
 	return nil
 }
 
+func (s *SystemConfig) GetPartitionMountOrdering() (orderedPartitionIDs []string) {
+	// map to track if we have already handled a partition
+	seenPartitions := make(map[string]bool)
+
+	for _, p := range s.PartitionSettings {
+		diskPartition
+	}
+	return orderedPartitionIDs
+}
+
 // IsValid returns an error if the SystemConfig is not valid
 func (s *SystemConfig) IsValid() (err error) {
 	// IsDefault must be validated by a parent struct

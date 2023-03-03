@@ -1,0 +1,120 @@
+{
+    "Disks": [
+        {
+            "PartitionTableType": "gpt",
+            "MaxSize": 4096,
+            "Artifacts": [
+                {
+                    "Name": "coreA",
+                    "Type": "vhdx"
+                }
+            ],
+            "Partitions": [
+                {
+                    "ID": "boot_1",
+                    "Start": 1,
+                    "End": 9,
+                    "FsType": "fat32"
+                },
+                {
+                    "ID": "rootfs_1",
+                    "Start": 9,
+                    "End": 0,
+                    "FsType": "ext4"
+                }
+            ]
+        },
+        {
+            "PartitionTableType": "gpt",
+            "MaxSize": 4096,
+            "Artifacts": [
+                {
+                    "Name": "coreB",
+                    "Type": "vhdx"
+                }
+            ],
+            "Partitions": [
+                {
+                    "ID": "boot_2",
+                    "Start": 1,
+                    "End": 9,
+                    "FsType": "fat32"
+                },
+                {
+                    "ID": "rootfs_2",
+                    "Start": 9,
+                    "End": 0,
+                    "FsType": "ext4"
+                }
+            ]
+        },
+        {
+            "TargetDisk": {
+                "Type": "raid",
+                "RaidConfig": {
+                    "ComponentPartIDs": [
+                        "boot_1",
+                        "boot_2"
+                    ],
+                    "Level": "1",
+                    "RaidID": "boot"
+                }
+            },
+            "Partitions": [
+                {
+                    "ID": "boot",
+                    "FsType": "fat32",
+                    "Flags": [
+                        "esp",
+                        "boot"
+                    ]
+                }
+            ]
+        },
+        {
+            "TargetDisk": {
+                "Type": "raid",
+                "RaidConfig": {
+                    "ComponentPartIDs": [
+                        "root_1",
+                        "root_2d"
+                    ],
+                    "Level": "1",
+                    "RaidID": "rootfs"
+                }
+            },
+            "Partitions": [
+                {
+                    "ID": "rootfs",
+                    "FsType": "ext4"
+                }
+            ]
+        }
+    ],
+    "SystemConfigs": [
+        {
+            "Name": "Standard",
+            "BootType": "efi",
+            "PartitionSettings": [
+                {
+                    "ID": "boot",
+                    "MountPoint": "/boot/efi",
+                    "MountOptions" : "umask=0077"
+                },
+                {
+                    "ID": "rootfs",
+                    "MountPoint": "/"
+                }
+            ],
+            "PackageLists": [
+                "packagelists/hyperv-packages.json",
+                "packagelists/core-packages-image.json",
+                "packagelists/cloud-init-packages.json"
+            ],
+            "KernelOptions": {
+                "default": "kernel"
+            },
+            "Hostname": "cbl-mariner"
+        }
+    ]
+}

@@ -124,6 +124,72 @@ func TestShouldFailDeviceMapperWithNoRootPartitions(t *testing.T) {
 
 }
 
+func TestSHouldValidateRaidComponentIDs(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Add a new raid disk config
+	testConfig.Disks = append(expectedConfiguration.Disks, Disk{})
+	testConfig.Disks[2].Partitions = []Partition{
+		{
+			ID: "MyRaidPart",
+		},
+	}
+	testConfig.Disks[2].TargetDisk = TargetDisk{
+		Type: "raid",
+		RaidConfig: RaidConfig{
+			Level:            "raid1",
+			ComponentPartIDs: []string{"MyRaidPart"},
+		},
+	}
+
+	assert.NoError(t, testConfig.IsValid())
+	err := remarshalJSON(testConfig, &checkedConfig)
+	assert.NoError(t, err)
+	assert.Equal(t, testConfig, checkedConfig)
+
+	// Now change the raid ID to have a non-existent partition
+	testConfig.Disks[2].TargetDisk.RaidConfig.ComponentPartIDs = []string{"MyRaidPart", "NotARealPart"}
+
+	err = testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: invalid [Disks] RAID configuration: RAID component partition 'NotARealPart' does not exist", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: invalid [Disks] RAID configuration: RAID component partition 'NotARealPart' does not exist", err.Error())
+}
+
+func TestShouldFailDuplicateRaidIDs(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Add a new raid disk config
+	testConfig.Disks = append(expectedConfiguration.Disks, Disk{})
+	testConfig.Disks[2].Partitions = []Partition{
+		{
+			ID: "MyRaidPart",
+		},
+	}
+	testConfig.Disks[2].TargetDisk = TargetDisk{
+		Type: "raid",
+		RaidConfig: RaidConfig{
+			Level:            "raid1",
+			ComponentPartIDs: []string{"MyRaidPart"},
+		},
+	}
+
+	testConfig.Disks = append(testConfig.Disks, testConfig.Disks[2])
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: a [Partition] on a [Disk] '2' shares an ID 'MyRaidPart' with another partition (on disk '3')", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: a [Partition] on a [Disk] '2' shares an ID 'MyRaidPart' with another partition (on disk '3')", err.Error())
+}
+
 func TestShouldFailDeviceMapperWithMultipleRoots(t *testing.T) {
 	var checkedConfig Config
 	testConfig := expectedConfiguration
