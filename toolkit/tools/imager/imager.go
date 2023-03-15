@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/imagegen/configuration"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/imagegen/diskutils"
@@ -95,12 +96,17 @@ func main() {
 		}
 	}
 
-	err = buildSystemConfig(systemConfig, config.Disks, *outputDir, *buildDir)
+	orderedDisks, err := config.GetDiskCreationOrder()
+	if err != nil {
+		logger.PanicOnError(err, "Failed to determine disk creation order: %w", err)
+	}
+
+	err = buildSystemConfig(systemConfig, orderedDisks, *outputDir, *buildDir)
 	logger.PanicOnError(err, "Failed to build system configuration")
 
 }
 
-func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configuration.Disk, outputDir, buildDir string) (err error) {
+func buildSystemConfig(systemConfig configuration.SystemConfig, orderedDisks []configuration.Disk, outputDir, buildDir string) (err error) {
 	logger.Log.Infof("Building system configuration (%s)", systemConfig.Name)
 
 	const (
@@ -162,12 +168,12 @@ func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configur
 			packagesToInstall = append([]string{kernelPkg}, packagesToInstall...)
 		}
 	} else {
-		for i, _ := range disks {
+		for i, _ := range orderedDisks {
 			defaultTempDiskNames = append(defaultTempDiskNames, fmt.Sprintf("%s%d.%s", defaultTempDiskName, i, defaultTempDiskExtension))
 		}
 		logger.Log.Info("Creating raw disk(s) in build directory")
 		//  For each disk, create a temporary disk image (.raw file) and attach it to a loopback device
-		diskDevPaths, partIDToDevPathMap, partIDToFsTypeMap, areDisksLoopDevices, encryptedRoot, readOnlyRoot, err = setupDisks(buildDir, defaultTempDiskNames, *liveInstallFlag, disks, systemConfig.Encryption, systemConfig.ReadOnlyVerityRoot)
+		diskDevPaths, partIDToDevPathMap, partIDToFsTypeMap, areDisksLoopDevices, encryptedRoot, readOnlyRoot, err = setupDisks(buildDir, defaultTempDiskNames, *liveInstallFlag, orderedDisks, systemConfig.Encryption, systemConfig.ReadOnlyVerityRoot, systemConfig.Hostname)
 		if err != nil {
 			return
 		}
@@ -177,6 +183,12 @@ func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configur
 			if areDisksLoopDevices[i] {
 				isOfflineInstall = true
 				defer diskutils.DetachLoopbackDevice(diskDevPath)
+				defer diskutils.BlockOnDiskIO(diskDevPath)
+			}
+
+			//Check for any disks with a path /dev/md/* and queue the mdadm stop command
+			if strings.HasPrefix(diskDevPath, "/dev/md") {
+				defer diskutils.StopRaidArray(diskDevPath)
 				defer diskutils.BlockOnDiskIO(diskDevPath)
 			}
 		}
@@ -242,7 +254,7 @@ func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configur
 		}
 
 		err = setupChroot.Run(func() error {
-			return buildImage(mountPointMap, mountPointToFsTypeMap, mountPointToMountArgsMap, partIDToDevPathMap, partIDToFsTypeMap, mountPointToOverlayMap, packagesToInstall, systemConfig, diskDevPaths, isRootFS, encryptedRoot, readOnlyRoot, diffDiskBuild, disks)
+			return buildImage(mountPointMap, mountPointToFsTypeMap, mountPointToMountArgsMap, partIDToDevPathMap, partIDToFsTypeMap, mountPointToOverlayMap, packagesToInstall, systemConfig, diskDevPaths, isRootFS, encryptedRoot, readOnlyRoot, diffDiskBuild, orderedDisks)
 		})
 		if err != nil {
 			logger.Log.Error("Failed to build image")
@@ -256,25 +268,27 @@ func buildSystemConfig(systemConfig configuration.SystemConfig, disks []configur
 		}
 
 		// Create any partition-based artifacts
-		err = installutils.ExtractPartitionArtifacts(setupChrootDir, outputDir, defaultDiskIndex, disks[defaultDiskIndex], systemConfig, partIDToDevPathMap, mountPointToOverlayMap)
+		err = installutils.ExtractPartitionArtifacts(setupChrootDir, outputDir, defaultDiskIndex, orderedDisks[defaultDiskIndex], systemConfig, partIDToDevPathMap, mountPointToOverlayMap)
 		if err != nil {
 			return
 		}
 
 		// Copy disk artifact if necessary.
 		if !isRootFS {
-			for _, defaultTempDiskName := range defaultTempDiskNames {
-				input := filepath.Join(buildDir, defaultTempDiskName)
-				output := filepath.Join(outputDir, defaultTempDiskName)
-				err = file.Copy(input, output)
-				if err != nil {
-					logger.Log.Errorf("Unable to copy file (%s) to (%s)", input, output)
-					return
+			for i, defaultTempDiskName := range defaultTempDiskNames {
+				if areDisksLoopDevices[i] {
+					input := filepath.Join(buildDir, defaultTempDiskName)
+					output := filepath.Join(outputDir, defaultTempDiskName)
+					err = file.Copy(input, output)
+					if err != nil {
+						logger.Log.Errorf("Unable to copy file (%s) to (%s)", input, output)
+						return
+					}
 				}
 			}
 		}
 	} else {
-		err = buildImage(mountPointMap, mountPointToFsTypeMap, mountPointToMountArgsMap, partIDToDevPathMap, partIDToFsTypeMap, mountPointToOverlayMap, packagesToInstall, systemConfig, diskDevPaths, isRootFS, encryptedRoot, readOnlyRoot, diffDiskBuild, disks)
+		err = buildImage(mountPointMap, mountPointToFsTypeMap, mountPointToMountArgsMap, partIDToDevPathMap, partIDToFsTypeMap, mountPointToOverlayMap, packagesToInstall, systemConfig, diskDevPaths, isRootFS, encryptedRoot, readOnlyRoot, diffDiskBuild, orderedDisks)
 		if err != nil {
 			logger.Log.Error("Failed to build image")
 			return
@@ -348,16 +362,16 @@ func setupRootFS(outputDir, installRoot string) (extraMountPoints []*safechroot.
 //   - areDisksLoopDevices: A slice of booleans indicating if each disk, in order, is a loopback device
 //   - encryptedRoot: An EncryptedRootDevice struct containing information about the encrypted root device, or nil if root is not encrypted
 //   - readOnlyRoot: A VerityDevice struct containing information about the read-only root device, or nil if root is not read-only
-func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, disks []configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot) (diskDevPaths []string, partIDToDevPathMap, partIDToFsTypeMap map[string]string, areDisksLoopDevices []bool, encryptedRoot diskutils.EncryptedRootDevice, readOnlyRoot diskutils.VerityDevice, err error) {
+func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, orderedDisks []configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot, hostName string) (diskDevPaths []string, partIDToDevPathMap, partIDToFsTypeMap map[string]string, areDisksLoopDevices []bool, encryptedRoot diskutils.EncryptedRootDevice, readOnlyRoot diskutils.VerityDevice, err error) {
 	var (
 		haveSetReadonlyRoot  bool = false
 		haveSetEncryptedRoot bool = false
 	)
 	partIDToDevPathMap = make(map[string]string)
 	partIDToFsTypeMap = make(map[string]string)
-	areDisksLoopDevices = make([]bool, len(disks))
+	areDisksLoopDevices = make([]bool, len(orderedDisks))
 
-	for discNum, diskConfig := range disks {
+	for discNum, diskConfig := range orderedDisks {
 		var (
 			newDiskDevPath                              string
 			newPartIDToDevPathMap, newPartIDToFsTypeMap map[string]string
@@ -374,6 +388,8 @@ func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, disk
 				err = fmt.Errorf("target Disk Type is set but --live-install option is not set. Please check your config or enable the --live-install option")
 				return
 			}
+		} else if diskConfig.TargetDisk.Type == configuration.TargetDiskTypeRaid {
+			newDiskDevPath, newPartIDToDevPathMap, newPartIDToFsTypeMap, newEncryptedRoot, newReadOnlyRoot, err = setupRaidDeviceDisk(partIDToDevPathMap, diskConfig, rootEncryption, readOnlyRootConfig, hostName)
 		} else {
 			newDiskDevPath, newPartIDToDevPathMap, newPartIDToFsTypeMap, newEncryptedRoot, newReadOnlyRoot, err = setupLoopDeviceDisk(outputDir, diskNames[discNum], diskConfig, rootEncryption, readOnlyRootConfig)
 			areDisksLoopDevices[discNum] = true
@@ -416,7 +432,7 @@ func setupDisks(outputDir string, diskNames []string, liveInstallFlag bool, disk
 	}
 
 	// Print out our final disk configurations for debugging purposes
-	for discNum, diskConfig := range disks {
+	for discNum, diskConfig := range orderedDisks {
 		logger.Log.Infof("Disk #%d (ID:%s) has device path: '%s'", discNum, diskConfig.ID, diskDevPaths[discNum])
 		for _, partition := range diskConfig.Partitions {
 			logger.Log.Infof("\tPartition (ID:%s), devPath: '%s', fsType: '%s'", partition.ID, partIDToDevPathMap[partition.ID], partIDToFsTypeMap[partition.ID])
@@ -461,6 +477,35 @@ func setupLoopDeviceDisk(outputDir, diskName string, diskConfig configuration.Di
 	return
 }
 
+func setupRaidDeviceDisk(existingPartIDToDevPathMap map[string]string, diskConfig configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot, hostName string) (mdadmDevicePath string, partIDToDevPathMap, partIDToFsTypeMap map[string]string, encryptedRoot *diskutils.EncryptedRootDevice, readOnlyRoot *diskutils.VerityDevice, err error) {
+	if diskConfig.TargetDisk.Type != configuration.TargetDiskTypeRaid {
+		err = fmt.Errorf("diskConfig.TargetDisk.Type is not a raid type")
+		return
+	}
+
+	// We need to search for our disk components in the existingPartIDToDevPathMap first.
+	componentDiskPaths := make([]string, 0, len(diskConfig.TargetDisk.RaidConfig.ComponentPartIDs))
+	for _, partID := range diskConfig.TargetDisk.RaidConfig.ComponentPartIDs {
+		componentDiskPaths = append(componentDiskPaths, existingPartIDToDevPathMap[partID])
+	}
+
+	mdadmDevicePath, err = diskutils.CreateRaidArray(diskConfig.TargetDisk.RaidConfig, componentDiskPaths, hostName)
+	if err != nil {
+		err = fmt.Errorf("failed to create RAID disk '%s' on disk (%s): %w", diskConfig.TargetDisk.RaidConfig.RaidID, mdadmDevicePath, err)
+		diskutils.StopRaidArray(mdadmDevicePath) // Stop the array if it was created, we haven't setup the defered cleanup yet
+		return
+	}
+
+	partIDToDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err = setupRealDisk(mdadmDevicePath, diskConfig, rootEncryption, readOnlyRootConfig)
+	if err != nil {
+		err = fmt.Errorf("failed to setup RAID disk '%s' partitions on device '%s': %w", diskConfig.TargetDisk.RaidConfig.RaidID, mdadmDevicePath, err)
+		diskutils.StopRaidArray(mdadmDevicePath) // Stop the array if it was created, we haven't setup the defered cleanup yet
+		return
+	}
+
+	return
+}
+
 func setupRealDisk(diskDevPath string, diskConfig configuration.Disk, rootEncryption configuration.RootEncryption, readOnlyRootConfig configuration.ReadOnlyVerityRoot) (partIDToDevPathMap, partIDToFsTypeMap map[string]string, encryptedRoot *diskutils.EncryptedRootDevice, readOnlyRoot *diskutils.VerityDevice, err error) {
 	const (
 		defaultBlockSize = diskutils.MiB
@@ -470,16 +515,19 @@ func setupRealDisk(diskDevPath string, diskConfig configuration.Disk, rootEncryp
 	// Set up partitions
 	partIDToDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err = diskutils.CreatePartitions(diskDevPath, diskConfig, rootEncryption, readOnlyRootConfig)
 	if err != nil {
-		logger.Log.Errorf("Failed to create partitions on disk (%s)", diskDevPath)
+		logger.Log.Errorf(err.Error())
+		err = fmt.Errorf("failed to create partitions on disk (%s): %w", diskDevPath, err)
 		return
 	}
 
 	// Apply firmware
 	err = diskutils.ApplyRawBinaries(diskDevPath, diskConfig)
 	if err != nil {
-		logger.Log.Errorf("Failed to add add raw binaries to disk (%s)", diskDevPath)
+		err = fmt.Errorf("failed to add add raw binaries to disk (%s): %w", diskDevPath, err)
 		return
 	}
+
+	logger.Log.Errorf("Done with setupRealDisk")
 
 	return
 }
@@ -619,6 +667,20 @@ func buildImage(mountPointMap, mountPointToFsTypeMap, mountPointToMountArgsMap, 
 		setupChrootPackages = append(setupChrootPackages, verityPackages...)
 	}
 
+	// Check if any disks are RAID devices
+	hasRAIDDisks := false
+	for _, disk := range disks {
+		if disk.TargetDisk.Type == configuration.TargetDiskTypeRaid {
+			hasRAIDDisks = true
+		}
+	}
+	if hasRAIDDisks {
+		// We will need the mdadm package (and its dependencies) to query the RAID disks we created, add them to our
+		// image setup environment (setuproot chroot or live installer).
+		raidPackages := []string{"mdadm"}
+		setupChrootPackages = append(setupChrootPackages, raidPackages...)
+	}
+
 	// Create new chroot for the new image
 	installChroot := safechroot.NewChroot(installRoot, existingChrootDir)
 	extraInstallMountPoints := []*safechroot.MountPoint{}
@@ -729,7 +791,7 @@ func configureDiskBootloader(systemConfig configuration.SystemConfig, installChr
 		return
 	}
 
-	// Grub only accepts UUID, not PARTUUID or PARTLABEL
+	// Grub only accepts UUID, not PARTUUID or PARTLABEL. RAID disks should still be searchable by UUID
 	bootUUID, err := installutils.GetUUID(bootDevice)
 	if err != nil {
 		err = fmt.Errorf("failed to get UUID: %s", err)
@@ -772,8 +834,23 @@ func configureDiskBootloader(systemConfig configuration.SystemConfig, installChr
 		rootDevice = partIdentifier
 	}
 
+	// We need to ask the initramfs to assemble raid arrays by their md UUID, or alternatively we could add a mdadm.conf file
+	// to the initramfs. Here we just use the md UUIDs on the command line.
+	var raidUUIDs []string
+	for _, device := range installMap {
+		if strings.Contains(device, "/dev/md") {
+			newRaidUUID := ""
+			newRaidUUID, err = installutils.GetRaidUUID(device)
+			if err != nil {
+				err = fmt.Errorf("failed to get RAID UUID: %s", err)
+				return
+			}
+			raidUUIDs = append(raidUUIDs, newRaidUUID)
+		}
+	}
+
 	// Grub will always use filesystem UUID, never PARTUUID or PARTLABEL
-	err = installutils.InstallGrubCfg(installChroot.RootDir(), rootDevice, bootUUID, bootPrefix, encryptedRoot, systemConfig.KernelCommandLine, readOnlyRoot)
+	err = installutils.InstallGrubCfg(installChroot.RootDir(), rootDevice, bootUUID, bootPrefix, encryptedRoot, systemConfig.KernelCommandLine, readOnlyRoot, raidUUIDs)
 	if err != nil {
 		err = fmt.Errorf("failed to install main grub config file: %s", err)
 		return

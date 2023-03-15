@@ -333,20 +333,23 @@ func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryptio
 	_, stderr, err := shell.Execute("sfdisk", "--delete", diskDevPath)
 	if err != nil {
 		logger.Log.Warnf("Failed to clear partition table. Expected if the disk is blank: %v", stderr)
+		err = nil
 	}
 
 	// Create new partition table
 	partitionTableType := disk.PartitionTableType
-	logger.Log.Debugf("Converting partition table type (%v) to parted argument", partitionTableType)
-	partedArgument, err := partitionTableType.ConvertToPartedArgument()
-	if err != nil {
-		logger.Log.Errorf("Unable to convert partition table type (%v) to parted argument", partitionTableType)
-		return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
-	}
-	_, stderr, err = shell.Execute("flock", "--timeout", timeoutInSeconds, diskDevPath, "parted", diskDevPath, "--script", "mklabel", partedArgument)
-	if err != nil {
-		logger.Log.Warnf("Failed to set partition table type using parted: %v", stderr)
-		return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+	if partitionTableType != configuration.PartitionTableTypeNone {
+		logger.Log.Debugf("Converting partition table type (%v) to parted argument", partitionTableType)
+		partedArgument, err := partitionTableType.ConvertToPartedArgument()
+		if err != nil {
+			err = fmt.Errorf("unable to convert partition table type (%v) to parted argument: %w", partitionTableType, err)
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+		}
+		stdout, stderr, err := shell.Execute("flock", "--timeout", timeoutInSeconds, diskDevPath, "parted", diskDevPath, "--script", "mklabel", partedArgument)
+		if err != nil {
+			err = fmt.Errorf("failed to set partition table type using parted: '%s' '%s': %w", stdout, stderr, err)
+			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+		}
 	}
 
 	usingExtendedPartition := (len(disk.Partitions) > maxPrimaryPartitionsForMBR) && (partitionTableType == configuration.PartitionTableTypeMbr)
@@ -358,6 +361,7 @@ func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryptio
 		if partType == extendedPartitionType {
 			err = createExtendedPartition(diskDevPath, partitionTableType.String(), disk.Partitions, partIDToFsTypeMap, partDevPathMap)
 			if err != nil {
+				err = fmt.Errorf("failed to create extended partition: %w", err)
 				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 			}
 
@@ -366,39 +370,90 @@ func CreatePartitions(diskDevPath string, disk configuration.Disk, rootEncryptio
 			partitionNumber = partitionNumber + 1
 		}
 
-		partDevPath, err := CreateSinglePartition(diskDevPath, partitionNumber, partitionTableType.String(), partition, partType)
-		if err != nil {
-			logger.Log.Warnf("Failed to create single partition")
-			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+		partDevPath := ""
+		if partitionTableType != configuration.PartitionTableTypeNone {
+			partDevPath, err = CreateSinglePartition(diskDevPath, partitionNumber, partitionTableType.String(), partition, partType)
+			if err != nil {
+				err = fmt.Errorf("failed to create single partition: %w", err)
+				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
+			}
+		} else {
+			partDevPath = diskDevPath
 		}
 
-		partFsType, err := FormatSinglePartition(partDevPath, partition)
+		var partFsType string
+		partFsType, err = FormatSinglePartition(partDevPath, partition)
 		if err != nil {
-			logger.Log.Warnf("Failed to format partition")
+			logger.Log.Errorf("Am I here?")
+			err = fmt.Errorf("failed to format single partition: %w", err)
 			return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 		}
 
 		if rootEncryption.Enable && partition.HasFlag(configuration.PartitionFlagDeviceMapperRoot) {
-			newEncryptedRootPtr, err := encryptRootPartition(partDevPath, partition, rootEncryption)
+			var newEncryptedRoot EncryptedRootDevice
+			newEncryptedRoot, err = encryptRootPartition(partDevPath, partition, rootEncryption)
 			if err != nil {
-				logger.Log.Warnf("Failed to initialize encrypted root")
+				err = fmt.Errorf("failed to initialize encrypted root: %w", err)
 				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 			}
 			partDevPathMap[partition.ID] = GetEncryptedRootVolMapping()
-			encryptedRoot = &newEncryptedRootPtr
+			encryptedRoot = &newEncryptedRoot
 		} else if readOnlyRootConfig.Enable && partition.HasFlag(configuration.PartitionFlagDeviceMapperRoot) {
-			newReadOnlyRootPtr, err := PrepReadOnlyDevice(partDevPath, partition, readOnlyRootConfig)
+			var newReadOnlyRoot VerityDevice
+			newReadOnlyRoot, err = PrepReadOnlyDevice(partDevPath, partition, readOnlyRootConfig)
 			if err != nil {
 				err = fmt.Errorf("failed to initialize read only root: %w", err)
 				return partDevPathMap, partIDToFsTypeMap, encryptedRoot, readOnlyRoot, err
 			}
-			partDevPathMap[partition.ID] = newReadOnlyRootPtr.MappedDevice
-			readOnlyRoot = &newReadOnlyRootPtr
+			partDevPathMap[partition.ID] = newReadOnlyRoot.MappedDevice
+			readOnlyRoot = &newReadOnlyRoot
 		} else {
 			partDevPathMap[partition.ID] = partDevPath
 		}
 
 		partIDToFsTypeMap[partition.ID] = partFsType
+	}
+
+	logger.Log.Errorf("Done with CreatePartitions")
+	if err != nil {
+		logger.Log.Errorf(err.Error())
+	} else {
+		logger.Log.Error("No err from CreatePartitions")
+	}
+	return
+}
+
+func CreateRaidArray(raidConfig configuration.RaidConfig, componentDevicePaths []string, hostName string) (mdadmDevicePath string, err error) {
+	mdadmDevicePath = "/dev/md/" + raidConfig.RaidID
+	mdadmArgs := []string{
+		"--create",
+		mdadmDevicePath,
+		"--run",      // Run the command even if things appear odd (such as existing file systems)
+		"--homehost", // We would append the hostname of the build machine to the raid array name if this wasn't explicitly set
+		hostName,
+		"--name",
+		raidConfig.RaidID,
+		"--verbose",
+		"--level",
+		strconv.Itoa(raidConfig.Level),
+		"--raid-devices=" + strconv.Itoa(len(componentDevicePaths)),
+	}
+	mdadmArgs = append(mdadmArgs, componentDevicePaths...)
+
+	stdout, stderr, err := shell.Execute("mdadm", mdadmArgs...)
+	if err != nil {
+		err = fmt.Errorf("failed to create RAID disk: '%s' '%s': %w", stdout, stderr, err)
+		return
+	}
+	return
+}
+
+// StopRaidArray stops the specified RAID array
+func StopRaidArray(diskDevPath string) (err error) {
+	logger.Log.Infof("Stopping RAID disk with path: %v", diskDevPath)
+	stdout, stderr, err := shell.Execute("mdadm", "--stop", diskDevPath)
+	if err != nil {
+		logger.Log.Errorf("Failed to stop RAID disk: '%s' '%s'", stdout, stderr)
 	}
 	return
 }
@@ -583,15 +638,16 @@ func FormatSinglePartition(partDevPath string, partition configuration.Partition
 		if fsType == "fat32" || fsType == "fat16" {
 			fsType = "vfat"
 		}
+		logger.Log.Errorf("HI")
 		err = retry.Run(func() error {
-			_, stderr, err := shell.Execute("mkfs", "-t", fsType, partDevPath)
+			stdout, stderr, err := shell.Execute("mkfs", "-t", fsType, partDevPath)
 			if err != nil {
-				logger.Log.Warnf("Failed to format partition using mkfs: %v", stderr)
-				return err
+				return fmt.Errorf("failed to format partition using mkfs: '%s' '%s': %w", stdout, stderr, err)
 			}
 
 			return err
 		}, totalAttempts, retryDuration)
+		logger.Log.Errorf("HO")
 		if err != nil {
 			err = fmt.Errorf("could not format partition with type %v after %v retries", fsType, totalAttempts)
 		}
@@ -618,6 +674,8 @@ func FormatSinglePartition(partDevPath string, partition configuration.Partition
 	default:
 		return fsType, fmt.Errorf("Unrecognized filesystem format: %v", fsType)
 	}
+
+	logger.Log.Errorf("Done with FormatSinglePartition")
 
 	return
 }

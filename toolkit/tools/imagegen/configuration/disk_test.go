@@ -196,3 +196,30 @@ func TestShouldFailInvalidTargetDisk_Disk(t *testing.T) {
 	assert.Error(t, err)
 	assert.Equal(t, "failed to parse [Disk]: failed to parse [TargetDisk]: invalid [TargetDisk]: Value must be specified for TargetDiskType of 'path'", err.Error())
 }
+
+func TestShouldFailMissingPartitionTableType_Disk(t *testing.T) {
+	var checkedDisk Disk
+	invalidDisk := validDisk
+
+	invalidDisk.PartitionTableType = ""
+	err := invalidDisk.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [PartitionTableType]: '', must be set to one of 'gpt' or 'mbr' when defining a real disk with partitions", err.Error())
+
+	err = remarshalJSON(invalidDisk, &checkedDisk)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Disk]: invalid [PartitionTableType]: '', must be set to one of 'gpt' or 'mbr' when defining a real disk with partitions", err.Error())
+}
+
+func TestShouldPassNoPartitionTableTypeWithNoParts_Disk(t *testing.T) {
+	var checkedDisk Disk
+	diskNoParts := validDisk
+
+	diskNoParts.PartitionTableType = ""
+	diskNoParts.Partitions = []Partition{}
+	err := diskNoParts.IsValid()
+	assert.NoError(t, err)
+
+	err = remarshalJSON(diskNoParts, &checkedDisk)
+	assert.NoError(t, err)
+}

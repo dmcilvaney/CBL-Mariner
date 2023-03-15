@@ -99,6 +99,62 @@ func (c *Config) GetBootPartition() (partitionIndex int, partition *Partition) {
 	return
 }
 
+// addDiskToOrdering adds the provided disk to the ordering, taking into account any dependencies. This is a recursive function.
+// The ordering is a list of disks that can be created in order, with the first disk in the list being the first to be created.
+func (c *Config) addDiskToOrdering(disk *Disk, orderedDisks []Disk, haveAddedDisk map[*Disk]bool) (newOrderedDisks []Disk, err error) {
+	if haveAddedDisk[disk] {
+		return orderedDisks, nil
+	}
+
+	switch disk.TargetDisk.Type {
+	case TargetDiskTypeRaid:
+		// For RAID disks, we need to add the disks they depend on first.
+		for _, raidDiskPartID := range disk.TargetDisk.RaidConfig.ComponentPartIDs {
+			raidDiskPart := c.GetDiskPartByID(raidDiskPartID)
+			if raidDiskPart == nil {
+				err = fmt.Errorf("failed to find RAID component part with ID '%s'", raidDiskPartID)
+				return
+			}
+
+			raidDiskPartParentDisk := c.GetDiskContainingPartition(raidDiskPart)
+			if raidDiskPartParentDisk == nil {
+				err = fmt.Errorf("failed to find RAID parent disk for partition with ID '%s'", raidDiskPartID)
+				return
+			}
+
+			orderedDisks, err = c.addDiskToOrdering(raidDiskPartParentDisk, orderedDisks, haveAddedDisk)
+			if err != nil {
+				err = fmt.Errorf("failed to add RAID component disk '%s' to ordering: %s", raidDiskPartParentDisk.ID, err.Error())
+				return
+			}
+		}
+		fallthrough // Fall through to the common case since we can now add the RAID disk itself.
+	case TargetDiskTypePath, TargetDiskTypeNone:
+		orderedDisks = append(orderedDisks, *disk)
+		haveAddedDisk[disk] = true
+	default:
+		err = fmt.Errorf("unsupported disk type '%s', can't determine order", disk.TargetDisk.Type)
+	}
+	return orderedDisks, err
+}
+
+// GetDiskCreationOrder returns a list of disks that need to be created, in the order they need to be created to avoid dependency issues.
+// If config is empty, returns an empty list.
+func (c *Config) GetDiskCreationOrder() (orderedDisks []Disk, err error) {
+	// First sort the disks by their mount point so nested mounts will work correctly.
+
+	// A map of disks that have already been added to the ordering so we don't add them twice during recursion.
+	haveAddedDisk := make(map[*Disk]bool)
+	for idx, _ := range c.Disks {
+		// Add each disk to the ordering. This is a recursive function that will add all dependencies for a disk first if needed.
+		orderedDisks, err = c.addDiskToOrdering(&c.Disks[idx], orderedDisks, haveAddedDisk)
+		if err != nil {
+			return nil, err
+		}
+	}
+	return
+}
+
 // GetKernelCmdLineValue returns the output of a specific option setting in /proc/cmdline
 func GetKernelCmdLineValue(option string) (cmdlineValue string, err error) {
 	const cmdlineFile = "/proc/cmdline"
@@ -200,14 +256,15 @@ func checkDuplicatePartitionIDs(config *Config) (err error) {
 
 // checkInvalidMountIdentifiers checks that we don't have an invalid combination of GPT/MBR, PARTLABEL, and Name for each partition.
 // PARTUUID and PARTLABEL are GPT concepts. MBR partly supports PARTUUID, but is completely incompatible with PARTLABEL.
-// If we want to use PARTLABEL, we need to define a [Name] for the partition as well.
+// If we want to use PARTLABEL, we need to define a [Name] for the partition as well. RAID disks cannot support PART* identifiers and
+// need to use UUID.
 func checkInvalidMountIdentifiers(config *Config) (err error) {
 	for _, sysConfig := range config.SystemConfigs {
 		for _, partSetting := range sysConfig.PartitionSettings {
-			if partSetting.MountIdentifier == MountIdentifierPartLabel {
-				diskPart := config.GetDiskPartByID(partSetting.ID)
-				disk := config.GetDiskContainingPartition(diskPart)
+			diskPart := config.GetDiskPartByID(partSetting.ID)
+			disk := config.GetDiskContainingPartition(diskPart)
 
+			if partSetting.MountIdentifier == MountIdentifierPartLabel {
 				if disk.PartitionTableType != PartitionTableTypeGpt {
 					return fmt.Errorf("[SystemConfig] '%s' mounts a [Partition] '%s' via PARTLABEL, but that partition is on an MBR disk which does not support PARTLABEL", sysConfig.Name, partSetting.ID)
 				}
@@ -215,6 +272,10 @@ func checkInvalidMountIdentifiers(config *Config) (err error) {
 				if diskPart.Name == "" {
 					return fmt.Errorf("[SystemConfig] '%s' mounts a [Partition] '%s' via PARTLABEL, but it has no [Name]", sysConfig.Name, partSetting.ID)
 				}
+			}
+
+			if disk.TargetDisk.Type == TargetDiskTypeRaid && partSetting.MountIdentifier != MountIdentifierUuid {
+				return fmt.Errorf("[SystemConfig] '%s' mounts a [Partition] '%s' on a RAID disk, but it is not mounted via UUID. RAID only supports [MountIdentifier]='%s'", sysConfig.Name, partSetting.ID, MountIdentifierUuid)
 			}
 		}
 	}
@@ -239,15 +300,24 @@ func checkInvalidMultiDiskConfig(config *Config) (err error) {
 	return err
 }
 
+// Can't have disks with both paths set and not set. Special types like RAID work fine with either.
 func checkMismatchedDiskTypes(config *Config) (err error) {
+	foundTargetTypeNone := false
+	foundTargetTypePath := false
 	if len(config.Disks) > 1 {
 		for i := 1; i < len(config.Disks); i++ {
-			if config.Disks[0].TargetDisk.Type != config.Disks[i].TargetDisk.Type {
-				return fmt.Errorf("[Disk] '%d' has a target type of '%s' while [Disk] '0' has a target type of '%s', ensure all disk target types match", i, config.Disks[i].TargetDisk.Type, config.Disks[0].TargetDisk.Type)
+			if config.Disks[i].TargetDisk.Type == TargetDiskTypeNone {
+				foundTargetTypeNone = true
+			} else if config.Disks[i].TargetDisk.Type == TargetDiskTypePath {
+				foundTargetTypePath = true
 			}
 		}
 	}
-	return err
+	if foundTargetTypeNone && foundTargetTypePath {
+		return fmt.Errorf("cannot have a [Disk] with TargetDisk of Type '%s' mixed with disks that have a TargetDisk Type '%s'", TargetDiskTypeNone, TargetDiskTypePath)
+	} else {
+		return nil
+	}
 }
 
 func checkDuplicateArtifactNames(config *Config) (err error) {
@@ -262,6 +332,47 @@ func checkDuplicateArtifactNames(config *Config) (err error) {
 		}
 	}
 	return err
+}
+
+func checkRaidDisk(config *Config, disk *Disk) (err error) {
+	// Make sure that all the component partitions exist
+	for _, partID := range disk.TargetDisk.RaidConfig.ComponentPartIDs {
+		if config.GetDiskPartByID(partID) == nil {
+			return fmt.Errorf("RAID component partition '%s' does not exist", partID)
+		}
+	}
+
+	if len(disk.Partitions) > 1 {
+		return fmt.Errorf("RAID disk '%s' cannot have more than one [Partition] per RAID disk (found %d)", disk.ID, len(disk.Partitions))
+	}
+
+	if disk.Partitions[0].Start != 0 || disk.Partitions[0].End != 0 {
+		return fmt.Errorf("RAID disk '%s' cannot have a [Partition] with a Start or End value", disk.ID)
+	}
+
+	return
+}
+
+// validateAllRaidDisks makes sure that all RAID disks have a unique ID and that the RAID configuration is valid.
+func validateAllRaidDisks(config *Config) (err error) {
+	raidIDs := make(map[string]bool)
+	for _, disk := range config.Disks {
+		if disk.TargetDisk.Type == TargetDiskTypeRaid {
+			// Check the config
+			err = checkRaidDisk(config, &disk)
+			if err != nil {
+				return fmt.Errorf("invalid [Disks] RAID configuration: %w", err)
+			}
+
+			// Check for duplicate IDs
+			raidID := disk.TargetDisk.RaidConfig.RaidID
+			if raidIDs[raidID] {
+				return fmt.Errorf("found multiple [Disks] with the same [Raid] ID '%s'", raidID)
+			}
+			raidIDs[raidID] = true
+		}
+	}
+	return
 }
 
 // IsValid returns an error if the Config is not valid
@@ -305,6 +416,11 @@ func (c *Config) IsValid() (err error) {
 	}
 
 	err = checkDuplicateArtifactNames(c)
+	if err != nil {
+		return fmt.Errorf("invalid [Config]: %w", err)
+	}
+
+	err = validateAllRaidDisks(c)
 	if err != nil {
 		return fmt.Errorf("invalid [Config]: %w", err)
 	}

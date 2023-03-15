@@ -188,6 +188,7 @@ func CreateInstallRoot(installRoot string, mountPointMap, mountPointToFsTypeMap,
 			return
 		}
 		installMap[mountPoint] = device
+		logger.Log.Errorf("Adding %s -> %s to installMap", mountPoint, device)
 	}
 	return
 }
@@ -292,7 +293,9 @@ func umount(path string) (err error) {
 // PackageNamesFromSingleSystemConfig goes through the "PackageLists" and "Packages" fields in the "SystemConfig" object, extracting
 // from packageList JSONs and packages listed in config itself to create one comprehensive package list.
 // NOTE: the package list contains the versions restrictions for the packages, if present, in the form "[package][condition][version]".
-//       Example: gcc=9.1.0
+//
+//	Example: gcc=9.1.0
+//
 // - systemConfig is the systemconfig field from the config file
 // Since kernel is not part of the packagelist, it is added separately from KernelOptions.
 func PackageNamesFromSingleSystemConfig(systemConfig configuration.SystemConfig) (finalPkgList []string, err error) {
@@ -363,6 +366,25 @@ func PackageNamesFromConfig(config configuration.Config) (packageList []*pkgjson
 	return
 }
 
+// orderPackageInstallList moves the initramfs to the very end of the package list. The resulting initramfs can be affected by which packages
+// are available on the system. If a package is missing because the initramfs was installed too early the dependant
+// dracut component will be silently disabled.
+func orderPackageInstallList(packageList []string) []string {
+	initramfsPackages := []string{}
+	orderedPackageList := []string{}
+
+	for _, pkg := range packageList {
+		// search for initramfs, ignroing any version info at the end of the package name
+		if strings.HasPrefix(pkg, "initramfs") {
+			initramfsPackages = append(initramfsPackages, pkg)
+		} else {
+			orderedPackageList = append(orderedPackageList, pkg)
+		}
+	}
+	orderedPackageList = append(orderedPackageList, initramfsPackages...)
+	return orderedPackageList
+}
+
 // PopulateInstallRoot fills the installroot with packages and configures the image for boot
 // - installChroot is a pointer to the install Chroot object
 // - packagesToInstall is a slice of packages to install
@@ -406,6 +428,9 @@ func PopulateInstallRoot(installChroot *safechroot.Chroot, packagesToInstall []s
 			}
 		}()
 	}
+
+	// Change the ordering if needed (ie make sure initramfs is last)
+	packagesToInstall = orderPackageInstallList(packagesToInstall)
 
 	// Calculate how many packages need to be installed so an accurate percent complete can be reported
 	totalPackages, err := calculateTotalPackages(packagesToInstall, installRoot)
@@ -664,6 +689,12 @@ func configureSystemFiles(installChroot *safechroot.Chroot, hostname string, con
 	if err != nil {
 		return
 	}
+
+	// // Update mdadm.conf
+	// err = updateMdadmConf(config)
+	// if err != nil {
+	// 	return
+	// }
 
 	// Update crypttab
 	err = updateCrypttab(installChroot.RootDir(), installMap, encryptedRoot)
@@ -926,6 +957,21 @@ func addEntryToFstab(installRoot, mountPoint, devicePath, fsType, mountArgs stri
 	return
 }
 
+// func updateMdadmConf(configuration.Config) (err error) {
+// 	ReportAction("Configuring mdadm.conf")
+
+// 	hasRaidDevice := false
+// 	for _, disk := range configuration.Disks {
+// 		if disk.TargetDisk.TYpe == configuration.TargetDiskTypeRaid {
+// 			hasRaidDevice = true
+// 			break
+// 		}
+// 	}
+// 	if hasRaidDevice {
+
+// 	}
+// }
+
 func updateCrypttab(installRoot string, installMap map[string]string, encryptedRoot diskutils.EncryptedRootDevice) (err error) {
 	ReportAction("Configuring Crypttab")
 
@@ -966,7 +1012,7 @@ func addEntryToCrypttab(installRoot string, devicePath string, encryptedRoot dis
 	return
 }
 
-//InstallGrubEnv installs an empty grubenv f
+// InstallGrubEnv installs an empty grubenv f
 func InstallGrubEnv(installRoot string) (err error) {
 	const (
 		assetGrubEnvFile = "/installer/grub2/grubenv"
@@ -990,7 +1036,7 @@ func InstallGrubEnv(installRoot string) (err error) {
 // - kernelCommandLine contains additional kernel parameters which may be optionally set
 // Note: this boot partition could be different than the boot partition specified in the bootloader.
 // This boot partition specifically indicates where to find the kernel, config files, and initrd
-func InstallGrubCfg(installRoot, rootDevice, bootUUID, bootPrefix string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot diskutils.VerityDevice) (err error) {
+func InstallGrubCfg(installRoot, rootDevice, bootUUID, bootPrefix string, encryptedRoot diskutils.EncryptedRootDevice, kernelCommandLine configuration.KernelCommandLine, readOnlyRoot diskutils.VerityDevice, raidUUIDs []string) (err error) {
 	const (
 		assetGrubcfgFile = "/installer/grub2/grub.cfg"
 		grubCfgFile      = "boot/grub2/grub.cfg"
@@ -1021,6 +1067,13 @@ func InstallGrubCfg(installRoot, rootDevice, bootUUID, bootPrefix string, encryp
 	err = setGrubCfgRootDevice(rootDevice, installGrubCfgFile, encryptedRoot.LuksUUID)
 	if err != nil {
 		logger.Log.Warnf("Failed to set rootDevice in grub.cfg: %v", err)
+		return
+	}
+
+	// Add in any RAID arrays that we should start
+	err = setGrubCfgRaid(raidUUIDs, installGrubCfgFile)
+	if err != nil {
+		logger.Log.Warnf("Failed to set raid in grub.cfg: %v", err)
 		return
 	}
 
@@ -1750,6 +1803,28 @@ func GetUUID(device string) (stdout string, err error) {
 	return
 }
 
+// GetRaidUUID queries the raw mduuid of the given RAID array
+// - device is the device path of the assambled raid array
+func GetRaidUUID(device string) (mduuid string, err error) {
+	mduuid, _, err = shell.Execute("mdadm", "--detail", "--export", device)
+	if err != nil {
+		return
+	}
+
+	logger.Log.Trace(mduuid)
+
+	// Parse the output to find the line with MD_UUID=
+	for _, line := range strings.Split(mduuid, "\n") {
+		if strings.HasPrefix(line, "MD_UUID=") {
+			mduuid = strings.TrimPrefix(line, "MD_UUID=")
+			break
+		}
+	}
+
+	mduuid = strings.TrimSpace(mduuid)
+	return
+}
+
 // GetPartUUID queries the PARTUUID of the given partition
 // - device is the device path of the desired partition
 func GetPartUUID(device string) (stdout string, err error) {
@@ -1775,8 +1850,11 @@ func GetPartLabel(device string) (stdout string, err error) {
 }
 
 // FormatMountIdentifier finds the requested identifier type for the given device, and formats it for use
-//  ie "UUID=12345678-abcd..."
+//
+//	ie "UUID=12345678-abcd..."
 func FormatMountIdentifier(identifier configuration.MountIdentifier, device string) (identifierString string, err error) {
+	logger.Log.Errorf("FormatMountIdentifier: %v, device: %v", identifier, device)
+
 	var id string
 	switch identifier {
 	case configuration.MountIdentifierUuid:
@@ -2254,6 +2332,27 @@ func setGrubCfgRootDevice(rootDevice, grubPath, luksUUID string) (err error) {
 	return
 }
 
+func setGrubCfgRaid(raidUUIDs []string, grubPath string) (err error) {
+	const (
+		raidUUIDPattern = "{{.RaidArrayUUIDs}}"
+	)
+	var cmdline configuration.KernelCommandLine
+
+	// Will be of the form rd.md.uuid=#####  rd.md.uuid=##### ..., one for each array
+	raidUUIDCmdLine := ""
+	for _, uuid := range raidUUIDs {
+		raidUUIDCmdLine = fmt.Sprintf("%s rd.md.uuid=%s", raidUUIDCmdLine, uuid)
+	}
+
+	logger.Log.Debugf("Adding raidUUIDs('%s') to '%s'", raidUUIDCmdLine, grubPath)
+	err = sed(raidUUIDPattern, raidUUIDCmdLine, cmdline.GetSedDelimeter(), grubPath)
+	if err != nil {
+		logger.Log.Warnf("Failed to set grub.cfg's raidUUIDs: %v", err)
+		return
+	}
+	return
+}
+
 // ExtractPartitionArtifacts scans through the SystemConfig and generates all the partition-based artifacts specified.
 // - setupChrootDirPath is the path to the setup root dir where the build takes place
 // - workDirPath is the directory to place the artifacts
@@ -2378,7 +2477,7 @@ func createRDiffArtifact(workDirPath, devPath, rDiffBaseImage, name string) (err
 	return shell.ExecuteLive(squashErrors, "rdiff", rdiffArgs...)
 }
 
-//KernelPackages returns a list of kernel packages obtained from KernelOptions in the config's SystemConfigs
+// KernelPackages returns a list of kernel packages obtained from KernelOptions in the config's SystemConfigs
 func KernelPackages(config configuration.Config) []*pkgjson.PackageVer {
 	var packageList []*pkgjson.PackageVer
 	// Add all the provided kernels to the package list

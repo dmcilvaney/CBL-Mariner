@@ -124,6 +124,178 @@ func TestShouldFailDeviceMapperWithNoRootPartitions(t *testing.T) {
 
 }
 
+func TestSHouldValidateRaidComponentIDs(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Add a new raid disk config
+	testConfig.Disks = append(expectedConfiguration.Disks, Disk{})
+	testConfig.Disks[2].Partitions = []Partition{
+		{
+			ID: "MyRaidPart",
+		},
+	}
+	testConfig.Disks[2].TargetDisk = TargetDisk{
+		Type: "raid",
+		RaidConfig: RaidConfig{
+			RaidID:           "MyRaid",
+			Level:            1,
+			ComponentPartIDs: []string{"MyRaidPart"},
+		},
+	}
+
+	assert.NoError(t, testConfig.IsValid())
+	err := remarshalJSON(testConfig, &checkedConfig)
+	assert.NoError(t, err)
+	assert.Equal(t, testConfig, checkedConfig)
+
+	// Now change the raid ID to have a non-existent partition
+	testConfig.Disks[2].TargetDisk.RaidConfig.ComponentPartIDs = []string{"MyRaidPart", "NotARealPart"}
+
+	err = testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: invalid [Disks] RAID configuration: RAID component partition 'NotARealPart' does not exist", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: invalid [Disks] RAID configuration: RAID component partition 'NotARealPart' does not exist", err.Error())
+}
+
+func TestShouldFailDuplicateRaidIDs(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Add a new raid disk config
+	testConfig.Disks = append(expectedConfiguration.Disks, Disk{})
+	testConfig.Disks[2].Partitions = []Partition{
+		{
+			ID: "MyRaidPart",
+		},
+	}
+	testConfig.Disks[2].TargetDisk = TargetDisk{
+		Type: "raid",
+		RaidConfig: RaidConfig{
+			RaidID:           "MyRaidID",
+			Level:            1,
+			ComponentPartIDs: []string{"MyRaidPart"},
+		},
+	}
+
+	testConfig.Disks = append(testConfig.Disks, testConfig.Disks[2])
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: a [Partition] on a [Disk] '2' shares an ID 'MyRaidPart' with another partition (on disk '3')", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: a [Partition] on a [Disk] '2' shares an ID 'MyRaidPart' with another partition (on disk '3')", err.Error())
+}
+
+func TestShouldFailRAIDMultiplePartitions(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	// Add a new raid disk config
+	testConfig.Disks = append(expectedConfiguration.Disks, Disk{ID: "MyRaidDisk"})
+	testConfig.Disks[2].Partitions = []Partition{
+		{
+			ID: "MyRaidPart",
+		},
+		{
+			ID: "MyRaidPart2",
+		},
+	}
+	testConfig.Disks[2].TargetDisk = TargetDisk{
+		Type: "raid",
+		RaidConfig: RaidConfig{
+			RaidID:           "MyRaidDisk",
+			Level:            1,
+			ComponentPartIDs: []string{"MyRaidPart", "MyRaidPart2"},
+		},
+	}
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: invalid [Disks] RAID configuration: RAID disk 'MyRaidDisk' cannot have more than one [Partition] per RAID disk (found 2)", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: invalid [Disks] RAID configuration: RAID disk 'MyRaidDisk' cannot have more than one [Partition] per RAID disk (found 2)", err.Error())
+}
+
+func TestShouldCreateValidOrderingOfDIsks(t *testing.T) {
+	diskOrderingConfig := Config{}
+	disk1 := Disk{
+		ID: "Disk1",
+		TargetDisk: TargetDisk{
+			Type: TargetDiskTypePath,
+		},
+		Partitions: []Partition{{ID: "Part1"}},
+	}
+	disk2 := Disk{
+		ID: "Disk2",
+		TargetDisk: TargetDisk{
+			Type: TargetDiskTypePath,
+		},
+		Partitions: []Partition{{ID: "Part2"}},
+	}
+	raidDisk := Disk{
+		ID: "DiskRaid",
+		TargetDisk: TargetDisk{
+			Type: TargetDiskTypeRaid,
+			RaidConfig: RaidConfig{
+				Level:            1,
+				ComponentPartIDs: []string{"Part1", "Part2"},
+			},
+		},
+	}
+
+	diskOrderingConfig.Disks = []Disk{disk1, disk2}
+
+	orderedList, err := diskOrderingConfig.GetDiskCreationOrder()
+	assert.NoError(t, err)
+	assert.Equal(t, "Disk1", orderedList[0].ID)
+	assert.Equal(t, "Disk2", orderedList[1].ID)
+
+	// Now add a raid disk in front, it should end up at the back of the list
+	diskOrderingConfig.Disks = []Disk{raidDisk, disk1, disk2}
+	orderedList, err = diskOrderingConfig.GetDiskCreationOrder()
+	assert.NoError(t, err)
+	// We don't care what order the first to elements are in, but the last one should be the raid disk
+	assert.Equal(t, "DiskRaid", orderedList[2].ID)
+	// Make sure the other two are still present in any order
+	assert.Contains(t, []string{"Disk1", "Disk2"}, orderedList[0].ID)
+	assert.Contains(t, []string{"Disk1", "Disk2"}, orderedList[1].ID)
+}
+
+func TestShouldFailMissingRaidComponentOrdering(t *testing.T) {
+	diskOrderingConfig := Config{}
+	raidDisk := Disk{
+		ID: "DiskRaid",
+		TargetDisk: TargetDisk{
+			Type: TargetDiskTypeRaid,
+			RaidConfig: RaidConfig{
+				Level:            1,
+				ComponentPartIDs: []string{"Part1", "Part2"},
+			},
+		},
+	}
+
+	diskOrderingConfig.Disks = []Disk{raidDisk}
+
+	_, err := diskOrderingConfig.GetDiskCreationOrder()
+	assert.Error(t, err)
+	assert.Equal(t, "failed to find RAID component part with ID 'Part1'", err.Error())
+}
+
+func TestShouldSucceedEmptyDiskOrder(t *testing.T) {
+	diskOrderingConfig := Config{}
+	orderedList, err := diskOrderingConfig.GetDiskCreationOrder()
+	assert.NoError(t, err)
+	assert.Equal(t, 0, len(orderedList))
+}
+
 func TestShouldFailDeviceMapperWithMultipleRoots(t *testing.T) {
 	var checkedConfig Config
 	testConfig := expectedConfiguration
@@ -285,6 +457,50 @@ func TestShouldFailPartLabelWithNoName(t *testing.T) {
 	err = remarshalJSON(testConfig, &checkedConfig)
 	assert.Error(t, err)
 	assert.Equal(t, "failed to parse [Config]: invalid [Config]: [SystemConfig] 'SmallerDisk' mounts a [Partition] 'MyBoot' via PARTLABEL, but it has no [Name]", err.Error())
+}
+
+func TestShouldFailRaidDiskWithNonUUIDIdentifier(t *testing.T) {
+	var checkedConfig Config
+	testConfig := expectedConfiguration
+
+	testConfig.SystemConfigs = append([]SystemConfig{}, expectedConfiguration.SystemConfigs[1])
+
+	// Clear the existing partition settings, add back a single raid disk
+	testConfig.SystemConfigs[0].PartitionSettings = append([]PartitionSetting{}, []PartitionSetting{{ID: "MyRaidPart", MountIdentifier: MountIdentifierPartUuid, MountPoint: "/"}}...)
+	// Add that raid disk to the config
+	testConfig.Disks = append([]Disk{},
+		Disk{
+			TargetDisk: TargetDisk{
+				Type: TargetDiskTypeRaid,
+				RaidConfig: RaidConfig{
+					RaidID: "MyRaid",
+					Level:  1,
+					ComponentPartIDs: []string{
+						"raid_comp_1",
+						"raid_comp_2",
+					},
+				},
+			},
+			Partitions: []Partition{
+				{
+					ID:    "MyRaidPart",
+					Start: 0,
+					End:   100,
+				},
+			},
+		},
+	)
+	// Borrow the existing disk0, add raid components to it
+	testConfig.Disks = append(testConfig.Disks, expectedConfiguration.Disks[0])
+	testConfig.Disks[1].Partitions = append([]Partition{}, []Partition{{ID: "raid_comp_1", Start: 100, End: 200}, {ID: "raid_comp_2", Start: 200, End: 300}}...)
+
+	err := testConfig.IsValid()
+	assert.Error(t, err)
+	assert.Equal(t, "invalid [Config]: [SystemConfig] 'BiggerDiskA' mounts a [Partition] 'MyRaidPart' on a RAID disk, but it is not mounted via UUID. RAID only supports [MountIdentifier]='uuid'", err.Error())
+
+	err = remarshalJSON(testConfig, &checkedConfig)
+	assert.Error(t, err)
+	assert.Equal(t, "failed to parse [Config]: invalid [Config]: [SystemConfig] 'BiggerDiskA' mounts a [Partition] 'MyRaidPart' on a RAID disk, but it is not mounted via UUID. RAID only supports [MountIdentifier]='uuid'", err.Error())
 }
 
 func TestShouldSucceedReturnPartitionIndexAndObjectForBootPartition(t *testing.T) {

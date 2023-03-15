@@ -50,8 +50,8 @@ func checkOverlappingePartitions(disk *Disk) (err error) {
 // also confirms that the MaxSize defined is large enough to accomodate all partitions. No partition should have an
 // end position that exceeds the MaxSize
 func checkMaxSizeCorrectness(disk *Disk) (err error) {
-	//MaxSize is not relevant if target disk is specified.
-	if disk.TargetDisk.Type != TargetDiskTypePath {
+	//MaxSize is not relevant if target disk is specified, or a virtual disk like a RAID array
+	if !(disk.TargetDisk.Type == TargetDiskTypePath || disk.TargetDisk.Type == TargetDiskTypeRaid) {
 		//Complain about 0 maxSize only when partitions are defined.
 		if disk.MaxSize <= 0 && len(disk.Partitions) != 0 {
 			return fmt.Errorf("a configuration without a defined target disk must have a non-zero MaxSize")
@@ -83,14 +83,10 @@ func (d *Disk) IsValid() (err error) {
 		return fmt.Errorf("invalid [PartitionTableType]: %w", err)
 	}
 
-	err = checkOverlappingePartitions(d)
-	if err != nil {
-		return fmt.Errorf("invalid [Disk]: %w", err)
-	}
-
-	err = checkMaxSizeCorrectness(d)
-	if err != nil {
-		return fmt.Errorf("invalid [Disk]: %w", err)
+	if d.TargetDisk.Type != TargetDiskTypeRaid {
+		if d.PartitionTableType == PartitionTableTypeNone && len(d.Partitions) > 0 {
+			return fmt.Errorf("invalid [PartitionTableType]: '%s', must be set to one of '%s' or '%s' when defining a real disk with partitions", d.PartitionTableType, PartitionTableTypeGpt, PartitionTableTypeMbr)
+		}
 	}
 
 	// for _, artifact := range disk.Artifacts {
@@ -111,6 +107,16 @@ func (d *Disk) IsValid() (err error) {
 
 	if err = d.TargetDisk.IsValid(); err != nil {
 		return
+	}
+
+	err = checkOverlappingePartitions(d)
+	if err != nil {
+		return fmt.Errorf("invalid [Disk]: %w", err)
+	}
+
+	err = checkMaxSizeCorrectness(d)
+	if err != nil {
+		return fmt.Errorf("invalid [Disk]: %w", err)
 	}
 
 	return

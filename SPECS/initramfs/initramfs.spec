@@ -1,7 +1,7 @@
 Summary:        initramfs
 Name:           initramfs
 Version:        2.0
-Release:        9%{?dist}
+Release:        999999%{?dist}
 License:        Apache License
 Vendor:         Microsoft Corporation
 Distribution:   Mariner
@@ -19,7 +19,7 @@ install -D -m644 %{SOURCE0} %{buildroot}%{_sysconfdir}/dracut.conf.d/
 install -d -m755 %{buildroot}%{_localstatedir}/lib/initramfs/kernel
 
 %define watched_path %{_sbindir} %{_libdir}/udev/rules.d %{_libdir}/systemd/system /lib/modules %{_sysconfdir}/dracut.conf.d
-%define watched_pkgs e2fsprogs, systemd, kpartx, device-mapper-multipath, verity-read-only-root, dracut-fips
+%define watched_pkgs e2fsprogs, systemd, kpartx, device-mapper-multipath, verity-read-only-root, dracut-fips, mdadm
 
 %define removal_action() rm -rf %{_localstatedir}/lib/rpm-state/initramfs
 
@@ -88,15 +88,15 @@ echo "initramfs (re)generation" %* >&2
 cat > /dev/null \
 if [ -f %{_localstatedir}/lib/rpm-state/initramfs/regenerate ]; then \
     echo "(re)generate initramfs for all kernels," %* >&2 \
-    mkinitrd -q \
+    mkinitrd \
     mv /boot/initrd.img-*mshv* /boot/efi/ \
 elif [ -d %{_localstatedir}/lib/rpm-state/initramfs/pending ]; then \
     for k in `ls %{_localstatedir}/lib/rpm-state/initramfs/pending/`; do \
         echo "(re)generate initramfs for $k," %* >&2 \
         if [[ $k == *mshv* ]]; then \
-            mkinitrd -q /boot/efi/initrd.img-$k $k -k \
+            mkinitrd /boot/efi/initrd.img-$k $k -k \
         else \
-            mkinitrd -q /boot/initrd.img-$k $k -k \
+            mkinitrd /boot/initrd.img-$k $k -k \
         fi \
     done; \
 fi \
@@ -105,7 +105,7 @@ fi \
 %posttrans
 echo "initramfs" %{version}-%{release} "posttrans" >&2
 %removal_action
-mkinitrd -q
+mkinitrd
 # Move initrd generated for kernel-mshv to /boot/efi, where linuxloader expects to find it
 mv /boot/initrd.img-*mshv* /boot/efi/
 

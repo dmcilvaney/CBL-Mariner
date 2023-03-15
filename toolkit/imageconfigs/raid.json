@@ -1,0 +1,142 @@
+{
+    "Disks": [
+        {
+            "PartitionTableType": "gpt",
+            "MaxSize": 5500,
+            "Artifacts": [
+                {
+                    "Name": "coreA",
+                    "Type": "vhdx"
+                }
+            ],
+            "Partitions": [
+                {
+                    "ID": "efi",
+                    "Flags": [
+                        "esp",
+                        "boot"
+                    ],
+                    "Start": 1,
+                    "End": 9,
+                    "FsType": "fat32"
+                },
+                {
+                    "ID": "boot_1",
+                    "Start": 100,
+                    "End": 500
+                },
+                {
+                    "ID": "boot_2",
+                    "Start": 500,
+                    "End": 900
+                },
+                {
+                    "ID": "boot_3",
+                    "Start": 900,
+                    "End": 1300
+                },
+                {
+                    "ID": "rootfs_1",
+                    "Start": 2000,
+                    "End": 3000
+                },
+                {
+                    "ID": "rootfs_2",
+                    "Start": 3000,
+                    "End": 4000
+                },
+                {
+                    "ID": "rootfs_3",
+                    "Start": 4000,
+                    "End": 5000
+                }
+            ]
+        },
+        {
+            "ID": "raidBoot",
+            "TargetDisk": {
+                "Type": "raid",
+                "RaidConfig": {
+                    "ComponentPartIDs": [
+                        "boot_1",
+                        "boot_2",
+                        "boot_3"
+                    ],
+                    "Level": 5,
+                    "RaidID": "boot"
+                }
+            },
+            "Partitions": [
+                {
+                    "ID": "boot",
+                    "FsType": "ext4"
+                }
+            ]
+        },
+        {
+            "TargetDisk": {
+                "Type": "raid",
+                "RaidConfig": {
+                    "ComponentPartIDs": [
+                        "rootfs_1",
+                        "rootfs_2",
+                        "rootfs_3"
+                    ],
+                    "Level": 5,
+                    "RaidID": "rootfs"
+                }
+            },
+            "Partitions": [
+                {
+                    "ID": "rootfs",
+                    "FsType": "ext4"
+                }
+            ]
+        }
+    ],
+    "SystemConfigs": [
+        {
+            "Name": "raid_offline",
+            "BootType": "efi",
+            "PrimaryDisk": "raidBoot",
+            "PartitionSettings": [
+                {
+                    "ID": "efi",
+                    "MountPoint": "/boot/efi",
+                    "MountOptions" : "umask=0077"
+                },
+                {
+                    "ID": "boot",
+                    "MountPoint": "/boot",
+                    "MountIdentifier": "uuid"
+                },
+                {
+                    "ID": "rootfs",
+                    "MountPoint": "/",
+                    "MountIdentifier": "uuid"
+                }
+            ],
+            "PackageLists": [
+                "packagelists/hyperv-packages.json",
+                "packagelists/core-packages-image.json",
+                "packagelists/cloud-init-packages.json",
+                "packagelists/raid-tools.json"
+            ],
+            "KernelOptions": {
+                "default": "kernel"
+            },
+            "KernelCommandLine": {
+                "ExtraCommandLine": "console=tty0 console=ttyS0=9800 rd.shell=1 rd.timeout=30 rd.debug" 
+            },
+            "Hostname": "cbl-mariner",
+            "Users": [
+                {
+                    "Name": "root",
+                    "Password": "$6$20m6y6nwlU1K$hKgyNYjVSKPJOTFaAzAf/fwACUV/dZ1NPy5cGNkhvRzKJiKDBKofuvDpdl81Jak4ep756DnZmVm7JfGRMO/n90",
+                    "PasswordHashed": true,
+                    "_comment": "The password is 'p@ssw0rd', this should be regenerated with 'openssl passwd -6 -salt <YOUR_SALT> <YOUR_PASSWORD>', or use the json key 'SSHPubKeyPaths' to use an SSH key for login"
+                }
+            ]
+        }
+    ]
+}

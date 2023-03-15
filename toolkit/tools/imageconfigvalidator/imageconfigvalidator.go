@@ -96,6 +96,7 @@ func validatePackages(config configuration.Config) (err error) {
 		verityPkgName      = "verity-read-only-root"
 		verityDebugPkgName = "verity-read-only-root-debug-tools"
 		dracutFipsPkgName  = "dracut-fips"
+		mdadmPkgName       = "mdadm"
 		fipsKernelCmdLine  = "fips=1"
 	)
 	for _, systemConfig := range config.SystemConfigs {
@@ -107,6 +108,7 @@ func validatePackages(config configuration.Config) (err error) {
 		foundVerityInitramfsPackage := false
 		foundVerityInitramfsDebugPackage := false
 		foundDracutFipsPackage := false
+		foundMdadmPackage := false
 		kernelCmdLineString := systemConfig.KernelCommandLine.ExtraCommandLine
 		for _, pkg := range packageList {
 			if pkg == "kernel" {
@@ -123,6 +125,9 @@ func validatePackages(config configuration.Config) (err error) {
 			}
 			if pkg == selinuxPkgName {
 				foundSELinuxPackage = true
+			}
+			if pkg == mdadmPkgName {
+				foundMdadmPackage = true
 			}
 		}
 		if systemConfig.ReadOnlyVerityRoot.Enable {
@@ -142,6 +147,25 @@ func validatePackages(config configuration.Config) (err error) {
 			if !foundSELinuxPackage {
 				return fmt.Errorf("%s: [SELinux] selected, but '%s' package is not included in the package lists", validateError, selinuxPkgName)
 			}
+		}
+
+		// We need the mdadm package if we have a RAID array
+		hasRaidArray := false
+		for _, part := range systemConfig.PartitionSettings {
+			diskPart := config.GetDiskPartByID(part.ID)
+			if diskPart == nil {
+				return fmt.Errorf("%s: couldn't find disk part '%s'", validateError, part.ID)
+			}
+			disk := config.GetDiskContainingPartition(diskPart)
+			if disk == nil {
+				return fmt.Errorf("%s: couldn't find disk for part '%s'", validateError, part.ID)
+			}
+			if disk.TargetDisk.Type == configuration.TargetDiskTypeRaid {
+				hasRaidArray = true
+			}
+		}
+		if hasRaidArray && !foundMdadmPackage {
+			return fmt.Errorf("%s: [PartitionSettings] contains a RAID array, but '%s' package is not included in the package lists", validateError, mdadmPkgName)
 		}
 	}
 	return
