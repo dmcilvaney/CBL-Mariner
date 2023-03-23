@@ -1,7 +1,7 @@
 Summary:        Metapackage to install all build tools
 Name:           build-essential
 Version:        0.1
-Release:        5%{?dist}
+Release:        6%{?dist}
 License:        GPLv2
 Requires:       autoconf
 Requires:       automake
@@ -16,6 +16,7 @@ Requires:       kernel-headers
 Requires:       libtool
 Requires:       make
 Requires:       patch
+Requires:       rpm-build
 
 %description
 Metapackage to install all build tools
@@ -28,6 +29,9 @@ Metapackage to install all build tools
 %defattr(-,root,root,0755)
 
 %changelog
+* Thu Mar 23 2023 Daniel McIlvaney <damcilva@microsoft.com> - 0.1-6
+- Add rpm-build
+
 * Wed Mar 30 2022 Chris Co <chrco@microsoft.com> - 0.1-5
 - Add installkernel
 - License verified
