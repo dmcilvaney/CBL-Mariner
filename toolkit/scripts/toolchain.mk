@@ -24,10 +24,20 @@ populated_toolchain_rpms = $(populated_toolchain_chroot)/usr/src/mariner/RPMS
 toolchain_spec_list = $(toolchain_build_dir)/toolchain_specs.txt
 toolchain_actual_contents = $(toolchain_build_dir)/actual_archive_contents.txt
 toolchain_expected_contents = $(toolchain_build_dir)/expected_archive_contents.txt
-raw_toolchain = $(toolchain_build_dir)/toolchain_from_container.tar.gz
+
+raw_toolchain_files = \
+	$(call shell_real_build_only, find $(SCRIPTS_DIR)/toolchain/container -name *.sh) \
+	$(call shell_real_build_only, find $(SCRIPTS_DIR)/toolchain/container -name *.patch) \
+	$(SCRIPTS_DIR)/toolchain/container/toolchain-remote-wget-list \
+	$(SCRIPTS_DIR)/toolchain/container/toolchain-sha256sums \
+	$(SCRIPTS_DIR)/toolchain/container/Dockerfile
+
+#./container/toolchain-sha256sums ./container/toolchain_build_in_chroot.sh ./create_toolchain_in_container.sh
+raw_toolchain_version = $(shell sha256sum $(raw_toolchain_files) | sha256sum | cut -d' ' -f1 )
+raw_toolchain = $(toolchain_build_dir)/toolchain_from_container_$(raw_toolchain_version).tar.gz
 final_toolchain = $(toolchain_build_dir)/toolchain_built_rpms_all.tar.gz
 toolchain_files = \
-	$(call shell_real_build_only, find $(SCRIPTS_DIR)/toolchain -name *.sh) \
+	$(call shell_real_build_only, find $(SCRIPTS_DIR)/toolchain -maxdepth 1 -name *.sh) \
 	$(SCRIPTS_DIR)/toolchain/container/Dockerfile
 
 TOOLCHAIN_MANIFEST ?= $(TOOLCHAIN_MANIFESTS_DIR)/toolchain_$(build_arch).txt
@@ -154,12 +164,14 @@ hydrate-toolchain:
 	sudo touch $(raw_toolchain)
 
 # Output:
-# out/toolchain/toolchain_from_container.tar.gz
-$(raw_toolchain): $(toolchain_files)
+# out/toolchain/toolchain_from_container_<hash>.tar.gz
+$(raw_toolchain): | $(raw_toolchain_files)
 	@echo "Building raw toolchain"
+	if [ -f $@ ]; then exit 0; fi ; \
 	cd $(SCRIPTS_DIR)/toolchain && \
 		./create_toolchain_in_container.sh \
 			$(BUILD_DIR) \
+			$(raw_toolchain) \
 			$(SPECS_DIR) \
 			$(SOURCE_URL) \
 			$(INCREMENTAL_TOOLCHAIN) \
@@ -209,7 +221,7 @@ endif
 # Output:
 # out/toolchain/built_rpms
 # out/toolchain/toolchain_built_rpms.tar.gz
-$(final_toolchain): $(raw_toolchain) $(toolchain_rpms_rehydrated) $(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag
+$(final_toolchain): $(toolchain_rpms_rehydrated) $(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag | $(raw_toolchain)
 	@echo "Building base packages"
 	# Clean the existing chroot if not doing an incremental build
 	$(if $(filter y,$(INCREMENTAL_TOOLCHAIN)),,rm -rf $(populated_toolchain_chroot))

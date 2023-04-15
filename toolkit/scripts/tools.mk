@@ -40,7 +40,7 @@ go_tool_targets = $(foreach target,$(go_tool_list),$(TOOL_BINS_DIR)/$(target))
 go_module_files = $(TOOLS_DIR)/go.mod $(TOOLS_DIR)/go.sum
 go_internal_files = $(shell find $(TOOLS_DIR)/internal/ -type f -name '*.go')
 go_imagegen_files = $(shell find $(TOOLS_DIR)/imagegen/ -type f -name '*.go')
-go_common_files = $(go_module_files) $(go_internal_files) $(go_imagegen_files) $(BUILD_DIR)/tools/internal.test_coverage
+go_common_files = $(go_module_files) $(go_internal_files) $(go_imagegen_files) $(BUILD_DIR)/tools/internal.test_coverage $(STATUS_FLAGS_DIR)/got_go_deps.flag
 # A report on test coverage for all the go tools
 test_coverage_report=$(TOOL_BINS_DIR)/test_coverage_report.html
 
@@ -81,7 +81,7 @@ $(TOOL_BINS_DIR)/%:
 	touch $@
 else
 # Rebuild the go tools as needed
-$(TOOL_BINS_DIR)/%: $(go_common_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag
+$(TOOL_BINS_DIR)/%: $(go_common_files)
 	cd $(TOOLS_DIR)/$* && \
 		go test -covermode=atomic -coverprofile=$(BUILD_DIR)/tools/$*.test_coverage ./... && \
 		CGO_ENABLED=0 go build \
@@ -90,7 +90,7 @@ $(TOOL_BINS_DIR)/%: $(go_common_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag
 endif
 
 # Runs tests for common components
-$(BUILD_DIR)/tools/internal.test_coverage: $(go_internal_files) $(go_imagegen_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag
+$(BUILD_DIR)/tools/internal.test_coverage: $(go_internal_files) $(go_imagegen_files)
 	cd $(TOOLS_DIR)/$* && \
 		go test -covermode=atomic -coverprofile=$@ ./...
 
@@ -98,7 +98,7 @@ $(BUILD_DIR)/tools/internal.test_coverage: $(go_internal_files) $(go_imagegen_fi
 # We can check if $SUDO_USER is set (the user who invoked sudo), and if so, use that user to run go get via sudo -u.
 # We allow the command to fail with || echo ..., since we don't want to fail the build if the user has already
 # downloaded the dependencies as root. The go build command will download the dependencies if they are missing (but as root).
-$(STATUS_FLAGS_DIR)/got_go_deps.flag: $(go_common_files)
+$(STATUS_FLAGS_DIR)/got_go_deps.flag:
 	@cd $(TOOLS_DIR)/ && \
 		if [ -z "$$SUDO_USER" ]; then \
 			echo "SUDO_USER is not set, running 'go get' as user '$$USER'"; \
