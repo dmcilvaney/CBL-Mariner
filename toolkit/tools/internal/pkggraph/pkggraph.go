@@ -41,6 +41,7 @@ const (
 	StateUnresolved NodeState = iota            // A dependency is not available locally and must be acquired from a remote repo
 	StateCached     NodeState = iota            // A dependency was not available locally, but is now available in the chache
 	StateBuildError NodeState = iota            // A package from a local SRPM which failed to build
+	StateDelta      NodeState = iota            // Same as build state, but an attempt has been made to pre-download the .rpm to the cache
 	StateMAX        NodeState = StateBuildError // Max allowable state
 )
 
@@ -119,6 +120,8 @@ func (n NodeState) String() string {
 		return "Unresolved"
 	case StateCached:
 		return "Cached"
+	case StateDelta:
+		return "Delta"
 	default:
 		logger.Log.Panic("Invalid NodeState encountered when serializing to string!")
 		return "error"
@@ -166,6 +169,8 @@ func (n *PkgNode) DOTColor() string {
 		return "crimson"
 	case StateCached:
 		return "darkorchid"
+	case StateDelta:
+		return "gold4"
 	default:
 		logger.Log.Panic("Invalid NodeState encountered when serializing to color!")
 		return "error"
@@ -1139,9 +1144,9 @@ func (g *PkgGraph) CreateSubGraph(rootNode *PkgNode) (subGraph *PkgGraph, err er
 // IsSRPMPrebuilt checks if an SRPM is prebuilt, returning true if so along with a slice of corresponding prebuilt RPMs.
 // The function will lock 'graphMutex' before performing the check if the mutex is not nil.
 func IsSRPMPrebuilt(srpmPath string, pkgGraph *PkgGraph, graphMutex *sync.RWMutex) (isPrebuilt bool, expectedFiles, missingFiles []string) {
-	expectedFiles = rpmsProvidedBySRPM(srpmPath, pkgGraph, graphMutex)
+	expectedFiles, alternatePaths := rpmsProvidedBySRPM(srpmPath, pkgGraph, graphMutex)
 	logger.Log.Tracef("Expected RPMs from %s: %v", srpmPath, expectedFiles)
-	isPrebuilt, missingFiles = findAllRPMS(expectedFiles)
+	isPrebuilt, missingFiles = findAllRPMS(expectedFiles, alternatePaths)
 	logger.Log.Tracef("Missing RPMs from %s: %v", srpmPath, missingFiles)
 	return
 }
@@ -1409,13 +1414,14 @@ func formatCycleErrorMessage(cycle []*PkgNode, err error) error {
 }
 
 // rpmsProvidedBySRPM returns all RPMs produced from a SRPM file.
-func rpmsProvidedBySRPM(srpmPath string, pkgGraph *PkgGraph, graphMutex *sync.RWMutex) (rpmFiles []string) {
+func rpmsProvidedBySRPM(srpmPath string, pkgGraph *PkgGraph, graphMutex *sync.RWMutex) (rpmFiles []string, alternatePaths map[string]string) {
 	if graphMutex != nil {
 		graphMutex.RLock()
 		defer graphMutex.RUnlock()
 	}
 
 	rpmsMap := make(map[string]bool)
+	alternatePaths = make(map[string]string)
 	runNodes := pkgGraph.AllRunNodes()
 	for _, node := range runNodes {
 		if node.SrpmPath != srpmPath {
@@ -1427,6 +1433,13 @@ func rpmsProvidedBySRPM(srpmPath string, pkgGraph *PkgGraph, graphMutex *sync.RW
 		}
 
 		rpmsMap[node.RpmPath] = true
+
+		// TOOD: Is this needed?????
+
+		// Delta RPMs may have an alternate location
+		// if node.State == StateDelta && node.DeltaRpmPath != "" {
+		// 	alternatePaths[node.RpmPath] = node.DeltaRpmPath
+		// }
 	}
 
 	rpmFiles = sliceutils.StringsSetToSlice(rpmsMap)
@@ -1437,9 +1450,14 @@ func rpmsProvidedBySRPM(srpmPath string, pkgGraph *PkgGraph, graphMutex *sync.RW
 // findAllRPMS returns true if all RPMs requested are found on disk.
 //
 //	Also returns a list of all missing files
-func findAllRPMS(rpmsToFind []string) (foundAllRpms bool, missingRpms []string) {
+func findAllRPMS(rpmsToFind []string, alternatePaths map[string]string) (foundAllRpms bool, missingRpms []string) {
 	for _, rpm := range rpmsToFind {
 		isFile, _ := file.IsFile(rpm)
+		altPath, hasAltPath := alternatePaths[rpm]
+
+		if !isFile && hasAltPath {
+			isFile, _ = file.IsFile(altPath)
+		}
 
 		if !isFile {
 			logger.Log.Debugf("Did not find (%s)", rpm)

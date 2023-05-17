@@ -37,6 +37,7 @@ type BuildRequest struct {
 	PkgGraph       *pkggraph.PkgGraph
 	AncillaryNodes []*pkggraph.PkgNode
 	CanUseCache    bool
+	IsDelta        bool
 }
 
 // BuildResult represents the results of a build agent trying to build a given node.
@@ -48,6 +49,7 @@ type BuildResult struct {
 	Node           *pkggraph.PkgNode
 	Skipped        bool
 	UsedCache      bool
+	WasDelta       bool
 }
 
 // selectNextBuildRequest selects a job based on priority:
@@ -97,6 +99,7 @@ func BuildNodeWorker(channels *BuildChannels, agent buildagents.BuildAgent, grap
 		res := &BuildResult{
 			Node:           req.Node,
 			AncillaryNodes: req.AncillaryNodes,
+			WasDelta:       req.IsDelta,
 		}
 
 		switch req.Node.Type {
@@ -129,6 +132,7 @@ func buildBuildNode(node *pkggraph.PkgNode, pkgGraph *pkggraph.PkgGraph, graphMu
 	var missingFiles []string
 
 	baseSrpmName := node.SRPMFileName()
+	logger.Log.Errorf("Building %s from node %s", baseSrpmName, node)
 	usedCache, builtFiles, missingFiles = pkggraph.IsSRPMPrebuilt(node.SrpmPath, pkgGraph, graphMutex)
 	skipped = sliceutils.Contains(ignoredPackages, node.SpecName(), sliceutils.StringMatch)
 
