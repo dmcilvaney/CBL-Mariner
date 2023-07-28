@@ -76,10 +76,11 @@ analyze-built-graph: $(go-graphanalytics)
 		exit 1; \
 	fi
 
+srpms = $(call shell_real_build_only, find $(BUILD_SRPMS_DIR)/ -type f -name '*.src.rpm')
 # Parse all specs in $(BUILD_SPECS_DIR) and generate a specs.json file encoding all dependency information
-$(specs_file): $(chroot_worker) $(BUILD_SPECS_DIR) $(build_specs) $(build_spec_dirs) $(go-specreader)
+$(specs_file): $(chroot_worker) $(go-specreader) $(srpms) $(BUILD_SRPMS_DIR)
 	$(go-specreader) \
-		--dir $(BUILD_SPECS_DIR) \
+		--dir $(BUILD_SRPMS_DIR) \
 		--build-dir $(parse_working_dir) \
 		--srpm-dir $(BUILD_SRPMS_DIR) \
 		--rpm-dir $(RPMS_DIR) \
@@ -200,7 +201,7 @@ srpms_archive  	= $(OUT_DIR)/srpms.tar.gz
 # Execute the package build scheduler.
 build-packages: $(RPMS_DIR)
 
-clean: clean-build-packages clean-compress-rpms clean-compress-srpms
+clean: clean-build-packages clean-compress-rpms clean-compress-srpms 
 
 # Empty rule for clean-build-packages-workers, we will append more rules to this later via the $(eval) function below
 clean-build-packages-workers:
@@ -211,7 +212,7 @@ clean-build-packages: clean-build-packages-workers
 	rm -rf $(RPMS_DIR)
 	rm -rf $(LOGS_DIR)/pkggen/failures.txt
 	rm -rf $(rpmbuilding_logs_dir)
-	rm -rf $(STATUS_FLAGS_DIR)/build-rpms.flag
+	rm -rf $(STATUS_FLAGS_DIR)/build-rpms.flag	
 clean-compress-rpms:
 	rm -rf $(pkggen_archive)
 clean-compress-srpms:
