@@ -18,6 +18,9 @@ SRPM_BUILD_LOGS_DIR = $(LOGS_DIR)/pkggen/srpms
 
 toolchain_spec_list = $(toolchain_build_dir)/toolchain_specs.txt
 srpm_pack_list_file = $(BUILD_SRPMS_DIR)/pack_list.txt
+srpm_packed_files   = $(BUILD_SRPMS_DIR)/packed_files.txt
+srpm_packed_files_toolchain = $(BUILD_SRPMS_DIR)/packed_files_toolchain.txt
+existing_srpms = $(call shell_real_build_only, find $(BUILD_SRPMS_DIR)/ -type f -name '*.src.rpm')
 
 # Configure the list of packages we want to process into SRPMs
 # Strip any whitespace from user input and reasign using override so we can compare it with the empty string
@@ -58,6 +61,9 @@ $(BUILD_SRPMS_DIR): $(STATUS_FLAGS_DIR)/build_srpms.flag
 	@touch $@
 	@echo Finished updating $@
 
+# We always want to scan for changes in SRPMs, so we use a phony target to force the build to run this. We will check if
+# any of the SRPMs have changed by looking at '$(srpm_packed_files)' and '$(srpm_packed_files_toolchain)'.
+.PHONY: srpm_always_run_phony
 ifeq ($(DOWNLOAD_SRPMS),y)
 $(STATUS_FLAGS_DIR)/build_srpms.flag: $(local_specs) $(local_spec_dirs) $(local_spec_sources) $(SPECS_DIR)
 	for spec in $(local_specs); do \
@@ -82,7 +88,12 @@ $(STATUS_FLAGS_DIR)/build_srpms.flag: $(local_specs) $(local_spec_dirs) $(local_
 $(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag: $(STATUS_FLAGS_DIR)/build_srpms.flag
 	@touch $@
 else
-$(STATUS_FLAGS_DIR)/build_srpms.flag: $(chroot_worker) $(local_specs) $(local_spec_dirs) $(SPECS_DIR) $(go-srpmpacker) $(srpm_pack_list_file) $(local_spec_sources)
+
+# SRPM packing will run if any spec files are newer than the status flag or if the status flag does not exist. However, the tool is smart enough to only pack the spec files that have changed.
+# If no spec files have changed then the status flag will not be updated (determined by the summary file being empty).
+# The main SRPM packer recipe is also responsible for removing any SRPMs that are no longer needed (toolchain SRPM packer recipe does not do this).
+$(STATUS_FLAGS_DIR)/build_srpms.flag: $(chroot_worker) $(local_specs) $(local_spec_dirs) $(SPECS_DIR) $(go-srpmpacker) $(srpm_pack_list_file) $(toolchain_spec_list) $(local_spec_sources) srpm_always_run_phony
+	[ -f $@ ] || touch $@ # Create the status flag if it does not exist because we may not pack anything
 	GODEBUG=netdns=go $(go-srpmpacker) \
 		--dir=$(SPECS_DIR) \
 		--output-dir=$(BUILD_SRPMS_DIR) \
@@ -95,7 +106,9 @@ $(STATUS_FLAGS_DIR)/build_srpms.flag: $(chroot_worker) $(local_specs) $(local_sp
 		--signature-handling=$(SRPM_FILE_SIGNATURE_HANDLING) \
 		--worker-tar=$(chroot_worker) \
 		$(if $(filter y,$(RUN_CHECK)),--run-check) \
-		$(if $(SRPM_PACK_LIST),--pack-list=$(srpm_pack_list_file)) \
+		$(if $(SRPM_PACK_LIST),--pack-list=$(srpm_pack_list_file) --keep-list=$(toolchain_spec_list)) \
+		--tidy \
+		--summary-file=$(srpm_packed_files) \
 		--log-file=$(SRPM_BUILD_LOGS_DIR)/srpmpacker.log \
 		--log-level=$(LOG_LEVEL) \
 		--cpu-prof-file=$(PROFILE_DIR)/srpm_packer.cpu.pprof \
@@ -105,9 +118,12 @@ $(STATUS_FLAGS_DIR)/build_srpms.flag: $(chroot_worker) $(local_specs) $(local_sp
 		$(if $(filter y,$(ENABLE_MEM_PROFILE)),--enable-mem-prof) \
 		$(if $(filter y,$(ENABLE_TRACE)),--enable-trace) \
 		--timestamp-file=$(TIMESTAMP_DIR)/srpm_packer.jsonl && \
-	touch $@
+	if [ -s "$(srpm_packed_files)" ]; then \
+		touch "$@"; \
+	fi
 
-$(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag: $(toolchain_spec_list) $(go-srpmpacker)
+$(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag: $(toolchain_spec_list) $(go-srpmpacker) $(srpm_always_run_phony)
+	[ -f $@ ] || touch $@ # Create the status flag if it does not exist because we may not pack anything
 	GODEBUG=netdns=go $(go-srpmpacker) \
 		--dir=$(SPECS_DIR) \
 		--output-dir=$(BUILD_SRPMS_DIR) \
@@ -120,6 +136,7 @@ $(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag: $(toolchain_spec_list) $(go-srpm
 		--signature-handling=$(SRPM_FILE_SIGNATURE_HANDLING) \
 		--pack-list=$(toolchain_spec_list) \
 		$(if $(filter y,$(RUN_CHECK)),--run-check) \
+		--summary-file=$(srpm_packed_files_toolchain) \
 		--log-file=$(LOGS_DIR)/toolchain/srpms/toolchain_srpmpacker.log \
 		--log-level=$(LOG_LEVEL) \
 		--cpu-prof-file=$(PROFILE_DIR)/srpm_toolchain_packer.cpu.pprof \
@@ -129,5 +146,7 @@ $(STATUS_FLAGS_DIR)/build_toolchain_srpms.flag: $(toolchain_spec_list) $(go-srpm
 		$(if $(filter y,$(ENABLE_MEM_PROFILE)),--enable-mem-prof) \
 		$(if $(filter y,$(ENABLE_TRACE)),--enable-trace) \
 		--timestamp-file=$(TIMESTAMP_DIR)/srpm_toolchain_packer.jsonl && \
-	touch $@
+	if [ -s "$(srpm_packed_files_toolchain)" ]; then \
+		touch "$@"; \
+	fi
 endif
