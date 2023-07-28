@@ -83,7 +83,7 @@ $(TOOL_BINS_DIR)/%:
 	touch $@
 else
 # Rebuild the go tools as needed
-$(TOOL_BINS_DIR)/%: $(go_common_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag
+$(TOOL_BINS_DIR)/%: $(go_common_files)
 	cd $(TOOLS_DIR)/$* && \
 		go test -covermode=atomic -coverprofile=$(BUILD_DIR)/tools/$*.test_coverage ./... && \
 		CGO_ENABLED=0 go build \
@@ -126,7 +126,7 @@ go-fmt-all:
 .PHONY: $(BUILD_DIR)/tools/all_tools.coverage
 $(BUILD_DIR)/tools/all_tools.coverage: $(call shell_real_build_only, find $(TOOLS_DIR)/ -type f -name '*.go') $(STATUS_FLAGS_DIR)/got_go_deps.flag
 	cd $(TOOLS_DIR) && go test -coverpkg=./... -covermode=atomic -coverprofile=$@ ./...
-$(test_coverage_report): $(BUILD_DIR)/tools/all_tools.coverage
+$(test_coverage_report): $(BUILD_DIR)/tools/all_tools.coverage $(STATUS_FLAGS_DIR)/got_go_deps.flag
 	cd $(TOOLS_DIR) && go tool cover -html=$(BUILD_DIR)/tools/all_tools.coverage -o $@
 go-test-coverage: $(test_coverage_report)
 	@echo Coverage report available at: $(test_coverage_report)
