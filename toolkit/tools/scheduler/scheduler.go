@@ -422,7 +422,11 @@ func buildAllNodes(stopOnFailure, canUseCache bool, packagesToRebuild, testsToRe
 					}
 				}
 
-				nodesToBuild = schedulerutils.FindUnblockedNodesFromResult(res, pkgGraph, graphMutex, buildState)
+				nodesToBuild, err = schedulerutils.FindUnblockedNodesFromResult(res, pkgGraph, graphMutex, buildState)
+				if err != nil {
+					// Failures to manipulate the graph are fatal.
+					stopBuilding = true
+				}
 			} else if stopOnFailure {
 				stopBuilding = true
 				err = res.Err

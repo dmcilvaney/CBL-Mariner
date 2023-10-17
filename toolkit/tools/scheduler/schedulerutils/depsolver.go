@@ -4,6 +4,7 @@
 package schedulerutils
 
 import (
+	"fmt"
 	"sync"
 
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/logger"
@@ -109,7 +110,7 @@ func LeafNodes(pkgGraph *pkggraph.PkgGraph, graphMutex *sync.RWMutex, goalNode *
 }
 
 // FindUnblockedNodesFromResult takes a package build result and returns a list of nodes that are now unblocked for building.
-func FindUnblockedNodesFromResult(res *BuildResult, pkgGraph *pkggraph.PkgGraph, graphMutex *sync.RWMutex, buildState *GraphBuildState) (unblockedNodes []*pkggraph.PkgNode) {
+func FindUnblockedNodesFromResult(res *BuildResult, pkgGraph *pkggraph.PkgGraph, graphMutex *sync.RWMutex, buildState *GraphBuildState) (unblockedNodes []*pkggraph.PkgNode, err error) {
 	if res.Err != nil {
 		return
 	}
@@ -125,7 +126,14 @@ func FindUnblockedNodesFromResult(res *BuildResult, pkgGraph *pkggraph.PkgGraph,
 		findUnblockedNodesFromNode(pkgGraph, buildState, node, unblockedNodesMap)
 	}
 
-	return sliceutils.SetToSlice(unblockedNodesMap)
+	for node, _ := range unblockedNodesMap {
+		if buildState.IsNodeProcessed(node) {
+			err = fmt.Errorf("node %v is already processed, irrecoverable cycle detected in scheduler", node)
+			return
+		}
+	}
+
+	return sliceutils.SetToSlice(unblockedNodesMap), nil
 }
 
 // findUnblockedNodesFromNode takes a built node and returns a list of nodes that are now unblocked by it.
