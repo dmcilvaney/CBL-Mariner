@@ -10,12 +10,14 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/buildpipeline"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/logger"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/packagerepo/repocloner"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/packagerepo/repomanager/rpmrepomanager"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/pkgjson"
+	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/retry"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/safechroot"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/shell"
 	"github.com/microsoft/CBL-Mariner/toolkit/tools/internal/tdnf"
@@ -379,6 +381,12 @@ func (r *RpmRepoCloner) CloneByNameSingleTransaction(cloneDeps bool, rawPackageN
 // If singleTransaction is set, all packages will be cloned in a single transaction.
 // If all packages come from the toolchain or local builds, the cloner will set allPackagesPrebuilt = true.
 func (r *RpmRepoCloner) cloneRawPackageNames(cloneDeps, singleTransaction bool, rawPackageNames ...string) (allPackagesPrebuilt bool, err error) {
+	const (
+		// This will retry for up to 5 + 10 + 15 + 20 + 25 + 30 + 35 + 40 + 45 + 50 = 275 seconds = ~4.5 minutes
+		retryAttempts = 10
+		retryDuration = time.Duration(5) * time.Second
+	)
+
 	timestamp.StartEvent("cloning packages", nil)
 	defer timestamp.StopEvent(nil)
 
@@ -414,15 +422,22 @@ func (r *RpmRepoCloner) cloneRawPackageNames(cloneDeps, singleTransaction bool, 
 		logger.Log.Debugf("Cloning raw names (%v).", packageNamesToClone)
 
 		finalArgs := append(constantArgs, packageNamesToClone...)
-		err = r.chroot.Run(func() (chrootErr error) {
-			prebuilt, chrootErr := r.clonePackage(finalArgs)
-			if !prebuilt {
-				allPackagesPrebuilt = false
+
+		chrootErr := r.chroot.Run(func() error {
+			retryErr := retry.Run(func() error {
+				prebuilt, cloneErr := r.clonePackage(finalArgs)
+				if !prebuilt {
+					allPackagesPrebuilt = false
+				}
+				return cloneErr
+			}, retryAttempts, retryDuration)
+			if retryErr != nil {
+				logger.Log.Warnf("Failed to clone packages: %s, will retry", retryErr)
 			}
-			return
+			return retryErr
 		})
 
-		if err != nil {
+		if chrootErr != nil {
 			return
 		}
 	}
