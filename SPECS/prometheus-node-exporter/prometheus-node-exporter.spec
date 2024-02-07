@@ -5,7 +5,7 @@
 Summary:        Exporter for machine metrics
 Name:           prometheus-node-exporter
 Version:        1.3.1
-Release:        21%{?dist}
+Release:        22%{?dist}
 # Upstream license specification: Apache-2.0
 License:        ASL 2.0 AND MIT
 Vendor:         Microsoft Corporation
@@ -35,6 +35,7 @@ Source5:        %{name}.logrotate
 Patch0:         defaults-paths.patch
 # https://github.com/prometheus/node_exporter/pull/2190
 Patch1:         0001-Refactor-perf-collector.patch
+Patch2:         CVE-2023-44487.patch
 
 BuildRequires:  golang
 BuildRequires:  systemd-rpm-macros
@@ -46,10 +47,11 @@ Prometheus exporter for hardware and OS metrics exposed by *NIX kernels, written
 in Go with pluggable metric collectors.
 
 %prep
-%autosetup -p1 -n node_exporter-%{version}
-
+%autosetup -N -n node_exporter-%{version}
+# Apply vendor before patching
 rm -rf vendor
 tar -xf %{SOURCE1} --no-same-owner
+%autopatch -p1
 
 %build
 export BUILDTAGS="netgo osusergo static_build"
@@ -107,6 +109,9 @@ getent passwd 'prometheus' >/dev/null || useradd -r -g 'prometheus' -d '%{_share
 %dir %attr(0755,prometheus,prometheus) %{_sharedstatedir}/prometheus/node-exporter
 
 %changelog
+* Fri Feb 02 2024 Daniel McIlvaney <damcilva@microsoft.com> - 1.3.1-22
+- Address CVE-2023-44487 by patching vendored golang.org/x/net
+
 * Mon Oct 16 2023 CBL-Mariner Servicing Account <cblmargh@microsoft.com> - 1.3.1-21
 - Bump release to rebuild with go 1.20.9
 
