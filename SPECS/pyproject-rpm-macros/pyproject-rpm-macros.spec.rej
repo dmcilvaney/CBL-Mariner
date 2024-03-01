@@ -1,0 +1,113 @@
+diff a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec	(rejected hunks)
+@@ -1,23 +1,24 @@
+-Summary:        RPM macros for PEP 517 Python packages
+ Name:           pyproject-rpm-macros
++Summary:        RPM macros for PEP 517 Python packages
++License:        MIT
++
++%bcond tests 1
++# pytest-xdist and tox are not desired in RHEL
++%bcond pytest_xdist %{undefined rhel}
++%bcond tox_tests %{undefined rhel}
++
+ # The idea is to follow the spirit of semver
+ # Given version X.Y.Z:
+ #   Increment X and reset Y.Z when there is a *major* incompatibility
+ #   Increment Y and reset Z when new macros or features are added
+ #   Increment Z when this is a bugfix or a cosmetic change
+ # Dropping support for EOL Fedoras is *not* considered a breaking change
+-Version:        1.0.0~rc1
+-Release:        4%{?dist}
+-License:        MIT
+-Vendor:         Microsoft Corporation
+-Distribution:   Azure Linux
+-URL:            https://src.fedoraproject.org/rpms/pyproject-rpm-macros
+-Patch0:         namespace_pyproject-rpm-macros_generated_text_files.diff
+-
+-BuildArch:      noarch
++Version:        1.12.0
++Release:        1%{?dist}
+ 
+ # Macro files
+ Source001:      macros.pyproject
++Source002:      macros.aaa-pyproject-srpm
+ 
+ # Implementation files
+ Source101:      pyproject_buildrequires.py
+@@ -76,40 +98,61 @@ They work for:
+ These macros replace %%py3_build and %%py3_install,
+ which only work with setup.py.
+ 
++%package -n pyproject-srpm-macros
++Summary:        Minimal implementation of %%pyproject_buildrequires
++Requires:       (pyproject-rpm-macros = %{?epoch:%{epoch}:}%{version}-%{release} if pyproject-rpm-macros)
++Requires:       (rpm-build >= 4.14.90 if rpm-build)
++
++%description -n pyproject-srpm-macros
++This package contains a minimal implementation of %%pyproject_buildrequires.
++When used in %%generate_buildrequires, it will generate BuildRequires
++for pyproject-rpm-macros. When both packages are installed, the full version
++takes precedence.
++
++
+ %prep
+ # Not strictly necessary but allows working on file names instead
+ # of source numbers in install section
+-%setup -q -c -T
+-%patch -P 0 -p1
++%setup -c -T
+ cp -p %{sources} .
+ 
++%generate_buildrequires
++# nothing to do, this is here just to assert we have that functionality
++
+ %build
+ # nothing to do, sources are not buildable
+ 
+ %install
+ mkdir -p %{buildroot}%{_rpmmacrodir}
+ mkdir -p %{buildroot}%{_rpmconfigdir}/mariner
+-install -m 644 macros.pyproject %{buildroot}%{_rpmmacrodir}/
+-install -m 644 pyproject_buildrequires.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_convert.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_save_files.py  %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_preprocess_record.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_construct_toxenv.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_requirements_txt.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 macros.pyproject %{buildroot}%{_rpmmacrodir}/
++install -pm 644 macros.aaa-pyproject-srpm %{buildroot}%{_rpmmacrodir}/
++install -pm 644 pyproject_buildrequires.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_convert.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_save_files.py  %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_preprocess_record.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_construct_toxenv.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_requirements_txt.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_wheel.py %{buildroot}%{_rpmconfigdir}/mariner/
+ 
+ %check
+-pip3 install more_itertools pytest>=3.9 toml 'tox>=3.27.1,<4.0.0'
++# assert the two signatures of %%pyproject_buildrequires match exactly
++signature1="$(grep '^%%pyproject_buildrequires' macros.pyproject | cut -d' ' -f1)"
++signature2="$(grep '^%%pyproject_buildrequires' macros.aaa-pyproject-srpm | cut -d' ' -f1)"
++test "$signature1" == "$signature2"
++# but also assert we are not comparing empty strings
++test "$signature1" != ""
++
++%if %{with tests}
+ export HOSTNAME="rpmbuild"  # to speedup tox in network-less mock, see rhbz#1856356
+-%{python3} -m pytest -vv --doctest-modules
+-test_status=$?
++%pytest -vv --doctest-modules %{?with_pytest_xdist:-n auto} %{!?with_tox_tests:-k "not tox"}
+ 
+ # brp-compress is provided as an argument to get the right directory macro expansion
+ %{python3} compare_mandata.py -f %{_rpmconfigdir}/brp-compress
+-[[ $? -eq 0 && $test_status -eq 0 ]]
++%endif
++
+ 
+ %files
+-%license LICENSE
+-%doc README.md
+ %{_rpmmacrodir}/macros.pyproject
+ %{_rpmconfigdir}/mariner/pyproject_buildrequires.py
+ %{_rpmconfigdir}/mariner/pyproject_convert.py

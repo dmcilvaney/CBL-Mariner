@@ -1,0 +1,2435 @@
+diff --git a/SPECS/pyproject-rpm-macros/macros.aaa-pyproject-srpm b/SPECS/pyproject-rpm-macros/macros.aaa-pyproject-srpm
+new file mode 100644
+index 000000000..d845e9637
+--- /dev/null
++++ b/SPECS/pyproject-rpm-macros/macros.aaa-pyproject-srpm
+@@ -0,0 +1,7 @@
++# This file is called macros.aaa-pyproject-srpm
++# to sort alphabetically before macros.pyproject.
++# When this file is installed but macros.pyproject is not
++# this macro will cause the package with the real macro to be installed.
++# When macros.pyproject is installed, it overrides this macro.
++# Note: This needs to maintain the same set of options as the real macro.
++%pyproject_buildrequires(rRxtNwe:C:) echo 'pyproject-rpm-macros' && exit 0
+diff --git a/SPECS/pyproject-rpm-macros/macros.pyproject b/SPECS/pyproject-rpm-macros/macros.pyproject
+index d16f1681a..1b39c1f28 100644
+--- a/SPECS/pyproject-rpm-macros/macros.pyproject
++++ b/SPECS/pyproject-rpm-macros/macros.pyproject
+@@ -1,5 +1,9 @@
+-# This is a directory where wheels are stored and installed from, relative to PWD
+-%_pyproject_wheeldir %{_builddir}%{?buildsubdir:/%{buildsubdir}}/pyproject-wheeldir
++# This is a backward-compatible suffix used in all pyproject-rpm-macros directories
++# For the main Python it's empty, for all others it's "-3.X"
++%_pyproject_files_pkgversion %{expr:"%{python3_pkgversion}" != "3" ? "-%{python3_pkgversion}" : ""}
++
++# This is a directory where wheels are stored and installed from, absolute
++%_pyproject_wheeldir %{_builddir}%{?buildsubdir:/%{buildsubdir}}/pyproject-wheeldir%{_pyproject_files_pkgversion}
+ 
+ # This is a directory used as TMPDIR, where pip copies sources to and builds from, relative to PWD
+ # For proper debugsource packages, we create TMPDIR within PWD
+@@ -8,29 +12,45 @@
+ # This will be used in debugsource package paths (applies to extension modules only)
+ # NB: pytest collects tests from here if not hidden
+ #     https://docs.pytest.org/en/latest/reference.html#confval-norecursedirs
+-%_pyproject_builddir %{_builddir}%{?buildsubdir:/%{buildsubdir}}/.pyproject-builddir
++%_pyproject_builddir %{_builddir}%{?buildsubdir:/%{buildsubdir}}/.pyproject-builddir%{_pyproject_files_pkgversion}
++
++# We prefix all created files with this value to make them unique
++# Ideally, we would put them into %%{buildsubdir}, but that value changes during the spec
++# The used value is similar to the one used to define the default %%buildroot
++%_pyproject_files_prefix %{name}-%{version}-%{release}.%{_arch}%{_pyproject_files_pkgversion}
+ 
+-%pyproject_files %{_builddir}/pyproject-files
+-%_pyproject_modules %{_builddir}/pyproject-modules
+-%_pyproject_ghost_distinfo %{_builddir}/pyproject-ghost-distinfo
+-%_pyproject_record %{_builddir}/pyproject-record
++%pyproject_files %{_builddir}/%{_pyproject_files_prefix}-pyproject-files
++%_pyproject_modules %{_builddir}/%{_pyproject_files_prefix}-pyproject-modules
++%_pyproject_ghost_distinfo %{_builddir}/%{_pyproject_files_prefix}-pyproject-ghost-distinfo
++%_pyproject_record %{_builddir}/%{_pyproject_files_prefix}-pyproject-record
++%_pyproject_buildrequires %{_builddir}/%{_pyproject_files_prefix}-pyproject-buildrequires
+ 
+ # Avoid leaking %%{_pyproject_builddir} to pytest collection
+ # https://bugzilla.redhat.com/show_bug.cgi?id=1935212
+ # The value is read and used by the %%pytest and %%tox macros:
+ %_set_pytest_addopts %global __pytest_addopts --ignore=%{_pyproject_builddir}
+ 
+-%pyproject_wheel() %{expand:\\\
++%pyproject_wheel(C:) %{expand:\\\
+ %_set_pytest_addopts
+ mkdir -p "%{_pyproject_builddir}"
+ CFLAGS="${CFLAGS:-${RPM_OPT_FLAGS}}" LDFLAGS="${LDFLAGS:-${RPM_LD_FLAGS}}" TMPDIR="%{_pyproject_builddir}" \\\
+-%{__python3} -m pip wheel --wheel-dir %{_pyproject_wheeldir} --no-deps --use-pep517 --no-build-isolation --disable-pip-version-check --no-clean --progress-bar off --verbose .
++%{__python3} -Bs %{_rpmconfigdir}/mariner/pyproject_wheel.py %{?**} %{_pyproject_wheeldir}
+ }
+ 
+ 
+-%pyproject_build_lib %{expand:\\\
++%pyproject_build_lib %{!?__pyproject_build_lib_warned:%{warn:The %%{pyproject_build_lib} macro is deprecated.
++It only works with setuptools and is not build-backend-agnostic.
++The macro is not scheduled for removal, but there is a possibility of incompatibilities with future versions of setuptools.
++As a replacement for the macro for the setuptools backend on Fedora 37+, you can use $PWD/build/lib for pure Python packages,
++or $PWD/build/lib.%%{python3_platform}-cpython-%%{python3_version_nodots} for packages with extension modules.
++Other build backends and older distributions may need different paths.
++See https://lists.fedoraproject.org/archives/list/python-devel@lists.fedoraproject.org/thread/HMLOPAU3RZLXD4BOJHTIPKI3I4U6U7OE/ for details.
++}%global __pyproject_build_lib_warned 1}%{expand:\\\
+ $(
+ pyproject_build_lib=()
++if [ -d build/lib.%{python3_platform}-cpython-%{python3_version_nodots} ]; then
++  pyproject_build_lib+=( "${PWD}/build/lib.%{python3_platform}-cpython-%{python3_version_nodots}" )
++fi
+ if [ -d build/lib.%{python3_platform}-%{python3_version} ]; then
+   pyproject_build_lib+=( "${PWD}/build/lib.%{python3_platform}-%{python3_version}" )
+ fi
+@@ -49,7 +69,11 @@ echo $(IFS=:; echo "${pyproject_build_lib[*]}")
+ 
+ %pyproject_install() %{expand:\\\
+ specifier=$(ls %{_pyproject_wheeldir}/*.whl | xargs basename --multiple | sed -E 's/([^-]+)-([^-]+)-.+\\\.whl/\\\1==\\\2/')
+-TMPDIR="%{_pyproject_builddir}" %{__python3} -m pip install --root %{buildroot} --no-deps --disable-pip-version-check --progress-bar off --verbose --ignore-installed --no-warn-script-location --no-index --no-cache-dir --find-links %{_pyproject_wheeldir} $specifier
++if [ -z $specifier ]; then
++  echo 'ERROR: %%%%pyproject_install found no wheel in %%%%{_pyproject_wheeldir} %{_pyproject_wheeldir}' >&2
++  exit 1
++fi
++TMPDIR="%{_pyproject_builddir}" %{__python3} -m pip install --root %{buildroot} --prefix %{_prefix} --no-deps --disable-pip-version-check --progress-bar off --verbose --ignore-installed --no-warn-script-location --no-index --no-cache-dir --find-links %{_pyproject_wheeldir} $specifier
+ if [ -d %{buildroot}%{_bindir} ]; then
+   %py3_shebang_fix %{buildroot}%{_bindir}/*
+   rm -rfv %{buildroot}%{_bindir}/__pycache__
+@@ -88,7 +112,12 @@ fi
+ %pyproject_extras_subpkg(n:i:f:F) %{expand:%{?python_extras_subpkg:%{python_extras_subpkg%{?!-i:%{?!-f:%{?!-F: -f %{_pyproject_ghost_distinfo}}}} %**}}}
+ 
+ 
+-%pyproject_save_files() %{expand:\\\
++# Escaping an actual percentage sign in path by 8 signs has been verified in RPM 4.16 and 4.17.
++# See this thread http://lists.rpm.org/pipermail/rpm-list/2021-June/002048.html
++# Since RPM 4.19, 2 signs are needed instead. 4.18.90+ is a pre-release of RPM 4.19.
++# On the CI, we build tests/escape_percentages.spec to verify the assumptions.
++%pyproject_save_files(lL) %{expand:\\\
++%{expr:v"0%{?rpmversion}" >= v"4.18.90" ? "RPM_PERCENTAGES_COUNT=2" : "RPM_PERCENTAGES_COUNT=8" } \\
+ %{__python3} %{_rpmconfigdir}/mariner/pyproject_save_files.py \\
+   --output-files "%{pyproject_files}" \\
+   --output-modules "%{_pyproject_modules}" \\
+@@ -98,7 +127,7 @@ fi
+   --python-version "%{python3_version}" \\
+   --pyproject-record "%{_pyproject_record}" \\
+   --prefix "%{_prefix}" \\
+-  %{*}
++  %{**}
+ }
+ 
+ # -t - Process only top-level modules
+@@ -112,25 +141,55 @@ fi
+ }
+ 
+ 
++%_pyproject_check_import_allow_no_modules(e:t) \
++if [ -z "$(cat %{_pyproject_modules})" ]; then\
++  echo "No modules to check found, exiting check"\
++else\
++  %pyproject_check_import %{?**}\
++fi
++
++
+ %default_toxenv py%{python3_version_nodots}
+ %toxenv %{default_toxenv}
+ 
+ 
+-%pyproject_buildrequires(rRxtNe:) %{expand:\\\
+-%{-R:%{-r:%{error:The -R and -r options are mutually exclusive}}}
++# Note: Keep the options in sync with this macro from macros.aaa-pyproject-srpm
++%pyproject_buildrequires(rRxtNwe:C:) %{expand:\\\
++%_set_pytest_addopts
++# The _auto_set_build_flags feature does not do this in %%generate_buildrequires section,
++# but we want to get an environment consistent with %%build:
++%{?_auto_set_build_flags:%set_build_flags}
++# The default flags expect the package note file to exist
++# see https://bugzilla.redhat.com/show_bug.cgi?id=2097535
++%{?_package_note_flags:%_generate_package_note_file}
++%{-R:
++%{-r:%{error:The -R and -r options are mutually exclusive}}
++%{-x:%{error:The -R and -x options are mutually exclusive}}
++%{-e:%{error:The -R and -e options are mutually exclusive}}
++%{-t:%{error:The -R and -t options are mutually exclusive}}
++%{-w:%{error:The -R and -w options are mutually exclusive}}
++}
+ %{-N:
+ %{-r:%{error:The -N and -r options are mutually exclusive}}
+ %{-x:%{error:The -N and -x options are mutually exclusive}}
+ %{-e:%{error:The -N and -e options are mutually exclusive}}
+ %{-t:%{error:The -N and -t options are mutually exclusive}}
++%{-w:%{error:The -N and -w options are mutually exclusive}}
++%{-C:%{error:The -N and -C options are mutually exclusive}}
+ }
+ %{-e:%{expand:%global toxenv %(%{__python3} -s %{_rpmconfigdir}/mariner/pyproject_construct_toxenv.py %{?**})}}
+-echo 'pyproject-rpm-macros'  # we already have this installed, but this way, it's repoqueryable
++echo 'pyproject-rpm-macros'  # first stdout line matches the implementation in macros.aaa-pyproject-srpm
+ echo 'python%{python3_pkgversion}-devel'
+ echo 'python%{python3_pkgversion}dist(pip) >= 19'
+ echo 'python%{python3_pkgversion}dist(packaging)'
+ %{!-N:if [ -f pyproject.toml ]; then
+-  echo 'python%{python3_pkgversion}dist(toml)'
++  %["%{python3_pkgversion}" == "3"
++    ? "echo '(python%{python3_pkgversion}dist(tomli) if python%{python3_pkgversion}-devel < 3.11)'"
++    : "%[v"%{python3_pkgversion}" < v"3.11"
++       ? "echo 'python%{python3_pkgversion}dist(tomli)'"
++       : "true # will use tomllib, echo nothing"
++    ]"
++  ]
+ elif [ -f setup.py ]; then
+   # Note: If the default requirements change, also change them in the script!
+   echo 'python%{python3_pkgversion}dist(setuptools) >= 40.8'
+@@ -142,17 +201,23 @@ fi}
+ # setuptools assumes no pre-existing dist-info
+ rm -rfv *.dist-info/ >&2
+ if [ -f %{__python3} ]; then
+-  RPM_TOXENV="%{toxenv}" HOSTNAME="rpmbuild" %{__python3} -s %{_rpmconfigdir}/mariner/pyproject_buildrequires.py %{?!_python_no_extras_requires:--generate-extras} --python3_pkgversion %{python3_pkgversion} %{?**}
++  mkdir -p "%{_pyproject_builddir}"
++  echo -n > %{_pyproject_buildrequires}
++  CFLAGS="${CFLAGS:-${RPM_OPT_FLAGS}}" LDFLAGS="${LDFLAGS:-${RPM_LD_FLAGS}}" TMPDIR="%{_pyproject_builddir}" \\\
++  RPM_TOXENV="%{toxenv}" HOSTNAME="rpmbuild" %{__python3} -Bs %{_rpmconfigdir}/mariner/pyproject_buildrequires.py %{?!_python_no_extras_requires:--generate-extras} --python3_pkgversion %{python3_pkgversion} --wheeldir %{_pyproject_wheeldir} --output %{_pyproject_buildrequires} %{?**} >&2
++  cat %{_pyproject_buildrequires}
+ fi
++# Incomplete .dist-info dir might confuse importlib.metadata
++rm -rfv *.dist-info/ >&2
+ }
+ 
+ 
+ %tox(e:) %{expand:\\\
+ TOX_TESTENV_PASSENV="${TOX_TESTENV_PASSENV:-*}" \\
+-PYTHONDONTWRITEBYTECODE=1 \\
++%{?py3_test_envvars}%{?!py3_test_envvars:PYTHONDONTWRITEBYTECODE=1 \\
+ PATH="%{buildroot}%{_bindir}:$PATH" \\
+ PYTHONPATH="${PYTHONPATH:-%{buildroot}%{python3_sitearch}:%{buildroot}%{python3_sitelib}}" \\
+-%{?__pytest_addopts:PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} %{__pytest_addopts}"} \\
++%{?__pytest_addopts:PYTEST_ADDOPTS="${PYTEST_ADDOPTS:-} %{__pytest_addopts}"}} \\
+ HOSTNAME="rpmbuild" \\
+ %{__python3} -m tox --current-env -q --recreate -e "%{-e:%{-e*}}%{!-e:%{toxenv}}" %{?*}
+ }
+diff --git a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.rpmlintrc b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.rpmlintrc
+new file mode 100644
+index 000000000..6d4298541
+--- /dev/null
++++ b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.rpmlintrc
+@@ -0,0 +1,5 @@
++# RPM macros, this is expected
++addFilter(r'only-non-binary-in-usr-lib')
++
++# we mention older macro names in the description, they are unexpanded on purpose
++addFilter(r'unexpanded-macro %description .+ %py3_')
+diff --git a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.signatures.json b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.signatures.json
+index a61d8c213..5ff8bb2b3 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.signatures.json
++++ b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.signatures.json
+@@ -3,18 +3,20 @@
+   "LICENSE": "7a89da3454e97113c7c1f7037933e8cac6882a84ae1981e3dc28c0d51654fd1d",
+   "README.md": "c50d8418c07aafa8bfc702eb50643a13cc799dea047d840a1ae487b646bcfb57",
+   "compare_mandata.py": "bf804a8112f76ce7eb565c26fcfca062046c51915b587aa149989dea4777327e",
+-  "macros.pyproject": "d831d06ac0dd28b2f8bab5b08e3842c0e4f607d0a0465998b07e080cbb954031",
+-  "pyproject_buildrequires.py": "187076a29a99cee25e62eb6b4f8ecb3a45f7a7b97767859a2dfea85163c26b40",
+-  "pyproject_buildrequires_testcases.yaml": "21185aee6cabde48fe513d822a95a067efc113fc31f0be4cbe9380b3c38ff467",
++  "macros.aaa-pyproject-srpm": "cfdd774095c84642ba473675bf4c17752a93de9b58f4727f91f7b068932c4597",
++  "macros.pyproject": "e9bb12dec022ff45b8b1fcfff21a2d900764b059f2358781bdc5657dbaa6f2a1",
++  "pyproject_buildrequires.py": "38c131d627dd37717933f6b17606b3036720720659856443b13de1e5e49bbeaa",
++  "pyproject_buildrequires_testcases.yaml": "72f61fd1171a2d4334898695262377c9909f850f3fa1d069d5c64604b8702874",
+   "pyproject_construct_toxenv.py": "73d77ba134e925680de7eeb60f9aaac6bb3b826d92f1b7a80603c596d6d8b241",
+   "pyproject_convert.py": "191745b96edbddd1fb09a4e4a6efaea71e5b6bcb1a0236c1b14a17caee8cf6b5",
+   "pyproject_preprocess_record.py": "fef4b3a43c4f710892278a7c4e92e10498552573b8a65b1d4eb7508f0a60788d",
+-  "pyproject_requirements_txt.py": "26d9dbebdd371269a935abbd8777e3c551327bfd3c2a1e8bbc9eec1d89767611",
+-  "pyproject_save_files.py": "9cf544d74491cae0be986d4fccf1b3b0ef349d86e747d8443611d1eab077a68e",
+-  "pyproject_save_files_test_data.yaml": "e3eca727843abd3dfafac3e8752fc5b8b624d1572ef2d95fae91e19683980d59",
++  "pyproject_requirements_txt.py": "3f6dad1ec8a42b6658c081f37cc97f1481610a96c0d36e6b60d150c24f20c4d6",
++  "pyproject_save_files.py": "164af8b3e8ced19beed7f9cf60e8b05a3fd869577d36cf2fc1994a9138315a80",
++  "pyproject_save_files_test_data.yaml": "d5223c05f6a978003f19abce3f159b453957d202c65a3ac3a784cc9b812d7910",
++  "pyproject_wheel.py": "9419d459698fa7697e802edae57be45bed606a2943ff6105347644ce83a7cfe3",
+   "test_RECORD": "58e67e9dcfec8ce90e29bdc33547ce4edebf280cada052f7185125313447ba42",
+-  "test_pyproject_buildrequires.py": "0e113e036d831183cbbbacb121555d41dc8684f27e20fcb1c4b59bda28f3188a",
++  "test_pyproject_buildrequires.py": "5479904d0e5fcc986c0db97cd3dad17bc895e2776fed368b4cd0422dd946c2fd",
+   "test_pyproject_requirements_txt.py": "aeb95d224be96fa7087adc6266b30fd2d60ffe0795b584ba5b2e165502d43f9f",
+   "test_pyproject_save_files.py": "48e9bff0eb819b5ca5118c24aba50947f1a16e9bff14e7487dd86001d587f4a1"
+  }
+-}
++}
+\ No newline at end of file
+diff --git a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec
+index 5a8b789c0..ff6daf042 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec
++++ b/SPECS/pyproject-rpm-macros/pyproject-rpm-macros.spec
+@@ -1,23 +1,24 @@
+-Summary:        RPM macros for PEP 517 Python packages
+ Name:           pyproject-rpm-macros
++Summary:        RPM macros for PEP 517 Python packages
++License:        MIT
++
++%bcond tests 1
++# pytest-xdist and tox are not desired in RHEL
++%bcond pytest_xdist %{undefined rhel}
++%bcond tox_tests %{undefined rhel}
++
+ # The idea is to follow the spirit of semver
+ # Given version X.Y.Z:
+ #   Increment X and reset Y.Z when there is a *major* incompatibility
+ #   Increment Y and reset Z when new macros or features are added
+ #   Increment Z when this is a bugfix or a cosmetic change
+ # Dropping support for EOL Fedoras is *not* considered a breaking change
+-Version:        1.0.0~rc1
+-Release:        4%{?dist}
+-License:        MIT
+-Vendor:         Microsoft Corporation
+-Distribution:   Azure Linux
+-URL:            https://src.fedoraproject.org/rpms/pyproject-rpm-macros
+-Patch0:         namespace_pyproject-rpm-macros_generated_text_files.diff
+-
+-BuildArch:      noarch
++Version:        1.12.0
++Release:        1%{?dist}
+ 
+ # Macro files
+ Source001:      macros.pyproject
++Source002:      macros.aaa-pyproject-srpm
+ 
+ # Implementation files
+ Source101:      pyproject_buildrequires.py
+@@ -26,6 +27,7 @@ Source103:      pyproject_convert.py
+ Source104:      pyproject_preprocess_record.py
+ Source105:      pyproject_construct_toxenv.py
+ Source106:      pyproject_requirements_txt.py
++Source107:      pyproject_wheel.py
+ 
+ # Tests
+ Source201:      test_pyproject_buildrequires.py
+@@ -42,25 +44,45 @@ Source303:      test_RECORD
+ Source901:      README.md
+ Source902:      LICENSE
+ 
++URL:            https://src.fedoraproject.org/rpms/pyproject-rpm-macros
++
++BuildArch:      noarch
++
+ %if 0%{?with_check}
+-BuildRequires:  python3-atomicwrites
+-BuildRequires:  python3-attrs
+-BuildRequires:  python3-pip
+-BuildRequires:  python3-pluggy
+-BuildRequires:  python3-six
++BuildRequires:  python3dist(pytest)
++%if %{with pytest_xdist}
++BuildRequires:  python3dist(pytest-xdist)
++%endif
++BuildRequires:  python3dist(pyyaml)
+ BuildRequires:  python3dist(packaging)
+ BuildRequires:  python3dist(pip)
+-BuildRequires:  python3dist(pyyaml)
+ BuildRequires:  python3dist(setuptools)
++%if %{with tox_tests}
+ BuildRequires:  python3dist(tox-current-env) >= 0.0.6
++%endif
+ BuildRequires:  python3dist(wheel)
+ %endif
+ 
+-Requires:       %{_bindir}/find
+-Requires:       /bin/sed
++# We build on top of those:
++BuildRequires:  python-rpm-macros
++BuildRequires:  python-srpm-macros
++BuildRequires:  python3-rpm-macros
+ Requires:       python-rpm-macros
+ Requires:       python-srpm-macros
+ Requires:       python3-rpm-macros
++%if 0
++Requires:       (pyproject-srpm-macros = %{?epoch:%{epoch}:}%{version}-%{release} if pyproject-srpm-macros)
++%endif
++
++# We use the following tools outside of coreutils
++Requires:       findutils
++Requires:       sed
++
++# This package requires the %%generate_buildrequires functionality.
++# It has been introduced in RPM 4.15 (4.14.90 is the alpha of 4.15).
++# What we need is rpmlib(DynamicBuildRequires), but that is impossible to (Build)Require.
++Requires:       (rpm-build >= 4.14.90 if rpm-build)
++BuildRequires:  rpm-build >= 4.14.90
+ 
+ %description
+ These macros allow projects that follow the Python packaging specifications
+@@ -76,40 +98,61 @@ They work for:
+ These macros replace %%py3_build and %%py3_install,
+ which only work with setup.py.
+ 
++%package -n pyproject-srpm-macros
++Summary:        Minimal implementation of %%pyproject_buildrequires
++Requires:       (pyproject-rpm-macros = %{?epoch:%{epoch}:}%{version}-%{release} if pyproject-rpm-macros)
++Requires:       (rpm-build >= 4.14.90 if rpm-build)
++
++%description -n pyproject-srpm-macros
++This package contains a minimal implementation of %%pyproject_buildrequires.
++When used in %%generate_buildrequires, it will generate BuildRequires
++for pyproject-rpm-macros. When both packages are installed, the full version
++takes precedence.
++
++
+ %prep
+ # Not strictly necessary but allows working on file names instead
+ # of source numbers in install section
+-%setup -q -c -T
+-%patch -P 0 -p1
++%setup -c -T
+ cp -p %{sources} .
+ 
++%generate_buildrequires
++# nothing to do, this is here just to assert we have that functionality
++
+ %build
+ # nothing to do, sources are not buildable
+ 
+ %install
+ mkdir -p %{buildroot}%{_rpmmacrodir}
+ mkdir -p %{buildroot}%{_rpmconfigdir}/mariner
+-install -m 644 macros.pyproject %{buildroot}%{_rpmmacrodir}/
+-install -m 644 pyproject_buildrequires.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_convert.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_save_files.py  %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_preprocess_record.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_construct_toxenv.py %{buildroot}%{_rpmconfigdir}/mariner/
+-install -m 644 pyproject_requirements_txt.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 macros.pyproject %{buildroot}%{_rpmmacrodir}/
++install -pm 644 macros.aaa-pyproject-srpm %{buildroot}%{_rpmmacrodir}/
++install -pm 644 pyproject_buildrequires.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_convert.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_save_files.py  %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_preprocess_record.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_construct_toxenv.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_requirements_txt.py %{buildroot}%{_rpmconfigdir}/mariner/
++install -pm 644 pyproject_wheel.py %{buildroot}%{_rpmconfigdir}/mariner/
+ 
+ %check
+-pip3 install more_itertools pytest>=3.9 toml 'tox>=3.27.1,<4.0.0'
++# assert the two signatures of %%pyproject_buildrequires match exactly
++signature1="$(grep '^%%pyproject_buildrequires' macros.pyproject | cut -d' ' -f1)"
++signature2="$(grep '^%%pyproject_buildrequires' macros.aaa-pyproject-srpm | cut -d' ' -f1)"
++test "$signature1" == "$signature2"
++# but also assert we are not comparing empty strings
++test "$signature1" != ""
++
++%if %{with tests}
+ export HOSTNAME="rpmbuild"  # to speedup tox in network-less mock, see rhbz#1856356
+-%{python3} -m pytest -vv --doctest-modules
+-test_status=$?
++%pytest -vv --doctest-modules %{?with_pytest_xdist:-n auto} %{!?with_tox_tests:-k "not tox"}
+ 
+ # brp-compress is provided as an argument to get the right directory macro expansion
+ %{python3} compare_mandata.py -f %{_rpmconfigdir}/brp-compress
+-[[ $? -eq 0 && $test_status -eq 0 ]]
++%endif
++
+ 
+ %files
+-%license LICENSE
+-%doc README.md
+ %{_rpmmacrodir}/macros.pyproject
+ %{_rpmconfigdir}/mariner/pyproject_buildrequires.py
+ %{_rpmconfigdir}/mariner/pyproject_convert.py
+@@ -117,17 +160,142 @@ test_status=$?
+ %{_rpmconfigdir}/mariner/pyproject_preprocess_record.py
+ %{_rpmconfigdir}/mariner/pyproject_construct_toxenv.py
+ %{_rpmconfigdir}/mariner/pyproject_requirements_txt.py
++%{_rpmconfigdir}/mariner/pyproject_wheel.py
++
++%doc README.md
++%license LICENSE
++
++%files -n pyproject-srpm-macros
++%{_rpmmacrodir}/macros.aaa-pyproject-srpm
++%license LICENSE
++
+ 
+ %changelog
+-* Fri Dec 16 2022 Sam Meluch <sammeluch@microsoft.com> - 1.0.0~rc1-4
+-- Update version of tox used for package tests
++* Fri Jan 26 2024 Miro Hrončok <miro@hroncok.cz> - 1.12.0-1
++- Namespace pyproject-rpm-macros generated text files with %%{python3_pkgversion}
++- That way, a single-spec can be used to build packages for multiple Python versions
++- Fixes: rhbz#2209055
++
++* Fri Jan 26 2024 Fedora Release Engineering <releng@fedoraproject.org> - 1.11.0-3
++- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
++
++* Sun Jan 21 2024 Fedora Release Engineering <releng@fedoraproject.org> - 1.11.0-2
++- Rebuilt for https://fedoraproject.org/wiki/Fedora_40_Mass_Rebuild
++
++* Wed Sep 27 2023 Miro Hrončok <mhroncok@redhat.com> - 1.11.0-1
++- Add the -l/-L flag to %%pyproject_save_files
++- The -l flag can be used to assert at least 1 License-File was detected
++- The -L flag explicitly disables this check (which remains the default)
++- Prevent incorrect usage of %%pyproject_buildrequires -R with -x/-e/-t
++- Fixes: rhbz#2244282
++- Show a better error message when %%pyproject_install finds no wheel
++- Fixes: rhbz#2242452
++- Fix %%pyproject_buildrequires -w when the build backend is already installed and pip isn't
++- Fixes: rhbz#2169855
++
++* Wed Sep 13 2023 Python Maint <python-maint@redhat.com> - 1.10.0-1
++- Add %%_pyproject_check_import_allow_no_modules for automated environments
++- Fix handling of tox 4 provision without an explicit tox minversion
++- Fixes: rhbz#2240590
++
++* Fri Jul 21 2023 Fedora Release Engineering <releng@fedoraproject.org> - 1.9.0-2
++- Rebuilt for https://fedoraproject.org/wiki/Fedora_39_Mass_Rebuild
++
++* Wed May 31 2023 Maxwell G <maxwell@gtmx.me> - 1.9.0-1
++- Allow passing config_settings to the build backend.
++- Resolves: rhbz#2192581
++
++* Wed May 31 2023 Miro Hrončok <mhroncok@redhat.com> - 1.8.1-1
++- On Python older than 3.11, use tomli instead of deprecated toml
++- Fix literal %% handling in %%{pyproject_files} on RPM 4.19
++
++* Tue May 23 2023 Miro Hrončok <mhroncok@redhat.com> - 1.8.0-2
++- Rebuilt for ELN dependency changes
++
++* Thu Apr 27 2023 Miro Hrončok <mhroncok@redhat.com> - 1.8.0-1
++- %%pyproject_buildrequires: Add support for self-referential extras requirements
++  Fixes: rhbz#2171343
++- Deprecate the provisional %%{pyproject_build_lib} macro
++  See https://lists.fedoraproject.org/archives/list/python-devel@lists.fedoraproject.org/thread/HMLOPAU3RZLXD4BOJHTIPKI3I4U6U7OE/
++
++* Fri Mar 31 2023 Miro Hrončok <mhroncok@redhat.com> - 1.7.0-1
++- %%pyproject_buildrequires: Redirect stdout to stderr via Shell
++- Dependencies are recorded to a text file that is catted at the end
++- Fixes: rhbz#2183519
++
++* Mon Feb 13 2023 Lumír Balhar <lbalhar@redhat.com> - 1.6.3-1
++- Remove .dist-info directory at the end of %%pyproject_buildrequires
++- An incomplete .dist-info directory in $PWD can confuse tests in %%check
++
++* Wed Feb 08 2023 Lumír Balhar <lbalhar@redhat.com> - 1.6.2-1
++- Improve detection of lang files
++- Fixes: rhbz#2166295
++
++* Fri Feb 03 2023 Miro Hrončok <mhroncok@redhat.com> - 1.6.1-1
++- %%pyproject_buildrequires: Avoid leaking stdout from subprocesses
++- Fixes: rhbz#2166888
++
++* Fri Jan 20 2023 Miro Hrončok <miro@hroncok.cz> - 1.6.0-1
++- Add pyproject-srpm-macros with a minimal %%pyproject_buildrequires macro
++
++* Fri Jan 20 2023 Fedora Release Engineering <releng@fedoraproject.org> - 1.5.1-2
++- Rebuilt for https://fedoraproject.org/wiki/Fedora_38_Mass_Rebuild
++
++* Fri Jan 13 2023 Miro Hrončok <mhroncok@redhat.com> - 1.5.1-1
++- Adjusts %%pyproject_buildrequires tests for tox 4
++- Fixes: rhbz#2160687
++
++* Mon Nov 28 2022 Miro Hrončok <mhroncok@redhat.com> - 1.5.0-1
++- Use %%py3_test_envvars in %%tox when available
++
++* Mon Sep 19 2022 Python Maint <python-maint@redhat.com> - 1.4.0-1
++- %%pyproject_save_files: Support License-Files installed into the *Root License Directory* from PEP 639
++- Fixes: rhbz#2127946
++- %%pyproject_check_import: Import only the modules whose top-level names
++  match any of the globs provided to %%pyproject_save_files
++- Fixes: rhbz#2127958
++
++* Tue Aug 30 2022 Otto Liljalaakso <otto.liljalaakso@iki.fi> - 1.3.4-1
++- Fix typo in internal function name
++
++* Tue Aug 09 2022 Karolina Surma <ksurma@redhat.com> - 1.3.3-1
++- Don't fail %%pyproject_save_files '*' if no modules are detected
++
++* Fri Jul 22 2022 Fedora Release Engineering <releng@fedoraproject.org> - 1.3.2-2
++- Rebuilt for https://fedoraproject.org/wiki/Fedora_37_Mass_Rebuild
++
++* Wed Jun 15 2022 Benjamin A. Beasley <code@musicinmybrain.net> - 1.3.2-1
++- Update %%pyproject_build_lib to support setuptools 62.1.0 and later
++- Fixes: rhbz#2097158
++- %%pyproject_buildrequires: When extension modules are built,
++  support https://fedoraproject.org/wiki/Changes/Package_information_on_ELF_objects
++- Fixes: rhbz#2097535
++
++* Fri May 27 2022 Owen Taylor <otaylor@redhat.com> - 1.3.1-1
++- %%pyproject_install: pass %%{_prefix} explicitly to pip install
++
++* Thu May 12 2022 Miro Hrončok <mhroncok@redhat.com> - 1.3.0-1
++- Use tomllib from the standard library on Python 3.11+
++
++* Wed Apr 27 2022 Miro Hrončok <mhroncok@redhat.com> - 1.2.0-1
++- %%pyproject_buildrequires: Add provisional -w flag for build backends without
++  prepare_metadata_for_build_wheel hook
++  When used, the wheel is built in %%pyproject_buildrequires
++  and information about runtime requires and extras is read from that wheel.
++- Fixes: rhbz#2076994
++
++* Tue Apr 12 2022 Miro Hrončok <mhroncok@redhat.com> - 1.1.0-1
++- %%pyproject_save_files: Support nested directories in dist-info
++- Fixes: rhbz#1985340
++
++* Tue Mar 22 2022 Miro Hrončok <mhroncok@redhat.com> - 1.0.1-1
++- Prefix paths of intermediate files (such as %%{pyproject_files}) with NVRA
+ 
+-* Thu Jul 21 2022 Pawel Winogrodzki <pawelwi@microsoft.com> - 1.0.0~rc1-3
+-- Adding missing test dependencies.
++* Tue Mar 01 2022 Miro Hrončok <mhroncok@redhat.com> - 1.0.0-1
++- Release final version 1.0.0
+ 
+-* Mon Feb 14 2022 Pawel Winogrodzki <pawelwi@microsoft.com> - 1.0.0~rc1-2
+-- Initial CBL-Mariner import from Fedora 36 (license: MIT).
+-- License verified.
++* Mon Feb 07 2022 Lumír Balhar <lbalhar@redhat.com> - 1.0.0~rc2-1
++- Updated compatibility with tox4
+ 
+ * Tue Jan 25 2022 Miro Hrončok <mhroncok@redhat.com> - 1.0.0~rc1-1
+ - Release version 1.0.0, first release candidate
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_buildrequires.py b/SPECS/pyproject-rpm-macros/pyproject_buildrequires.py
+index 5f55b01d4..515da95df 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject_buildrequires.py
++++ b/SPECS/pyproject-rpm-macros/pyproject_buildrequires.py
+@@ -1,18 +1,20 @@
++import glob
++import io
+ import os
+ import sys
+ import importlib.metadata
+ import argparse
+ import traceback
+-import contextlib
+-from io import StringIO
+ import json
+ import subprocess
+ import re
+ import tempfile
+ import email.parser
+ import pathlib
++import zipfile
+ 
+ from pyproject_requirements_txt import convert_requirements_txt
++from pyproject_wheel import parse_config_settings_args
+ 
+ 
+ # Some valid Python version specifiers are not supported.
+@@ -43,15 +45,6 @@ except ImportError as e:
+ from pyproject_convert import convert
+ 
+ 
+-@contextlib.contextmanager
+-def hook_call():
+-    captured_out = StringIO()
+-    with contextlib.redirect_stdout(captured_out):
+-        yield
+-    for line in captured_out.getvalue().splitlines():
+-        print_err('HOOK STDOUT:', line)
+-
+-
+ def guess_reason_for_invalid_requirement(requirement_str):
+     if ':' in requirement_str:
+         message = (
+@@ -73,10 +66,11 @@ def guess_reason_for_invalid_requirement(requirement_str):
+ 
+ 
+ class Requirements:
+-    """Requirement printer"""
++    """Requirement gatherer. The macro will eventually print out output_lines."""
+     def __init__(self, get_installed_version, extras=None,
+-                 generate_extras=False, python3_pkgversion='3'):
++                 generate_extras=False, python3_pkgversion='3', config_settings=None):
+         self.get_installed_version = get_installed_version
++        self.output_lines = []
+         self.extras = set()
+ 
+         if extras:
+@@ -84,9 +78,11 @@ class Requirements:
+                 self.add_extras(*extra.split(','))
+ 
+         self.missing_requirements = False
++        self.ignored_alien_requirements = []
+ 
+         self.generate_extras = generate_extras
+         self.python3_pkgversion = python3_pkgversion
++        self.config_settings = config_settings
+ 
+     def add_extras(self, *extras):
+         self.extras |= set(e.strip() for e in extras)
+@@ -97,13 +93,13 @@ class Requirements:
+             return [{'extra': e} for e in sorted(self.extras)]
+         return [{'extra': ''}]
+ 
+-    def evaluate_all_environamnets(self, requirement):
++    def evaluate_all_environments(self, requirement):
+         for marker_env in self.marker_envs:
+             if requirement.marker.evaluate(environment=marker_env):
+                 return True
+         return False
+ 
+-    def add(self, requirement_str, *, source=None):
++    def add(self, requirement_str, *, package_name=None, source=None):
+         """Output a Python-style requirement string as RPM dep"""
+         print_err(f'Handling {requirement_str} from {source}')
+ 
+@@ -123,8 +119,23 @@ class Requirements:
+ 
+         name = canonicalize_name(requirement.name)
+         if (requirement.marker is not None and
+-                not self.evaluate_all_environamnets(requirement)):
++                not self.evaluate_all_environments(requirement)):
+             print_err(f'Ignoring alien requirement:', requirement_str)
++            self.ignored_alien_requirements.append(requirement_str)
++            return
++
++        # Handle self-referencing requirements
++        if package_name and canonicalize_name(package_name) == name:
++            # Self-referential extras need to be handled specially
++            if requirement.extras:
++                if not (requirement.extras <= self.extras):  # only handle it if needed
++                    # let all further requirements know we want those extras
++                    self.add_extras(*requirement.extras)
++                    # re-add all of the alien requirements ignored in the past
++                    # they might no longer be alien now
++                    self.readd_ignored_alien_requirements(package_name=package_name)
++            else:
++                print_err(f'Ignoring self-referential requirement without extras:', requirement_str)
+             return
+ 
+         # We need to always accept pre-releases as satisfying the requirement
+@@ -165,12 +176,12 @@ class Requirements:
+                 together.append(convert(python3dist(name, python3_pkgversion=self.python3_pkgversion),
+                                         specifier.operator, specifier.version))
+             if len(together) == 0:
+-                print(python3dist(name,
+-                                  python3_pkgversion=self.python3_pkgversion))
++                dep = python3dist(name, python3_pkgversion=self.python3_pkgversion)
++                self.output_lines.append(dep)
+             elif len(together) == 1:
+-                print(together[0])
++                self.output_lines.append(together[0])
+             else:
+-                print(f"({' with '.join(together)})")
++                self.output_lines.append(f"({' with '.join(together)})")
+ 
+     def check(self, *, source=None):
+         """End current pass if any unsatisfied dependencies were output"""
+@@ -183,22 +194,35 @@ class Requirements:
+         for req_str in requirement_strs:
+             self.add(req_str, **kwargs)
+ 
++    def readd_ignored_alien_requirements(self, **kwargs):
++        """add() previously ignored alien requirements again."""
++        requirements, self.ignored_alien_requirements = self.ignored_alien_requirements, []
++        kwargs.setdefault('source', 'Previously ignored alien requirements')
++        self.extend(requirements, **kwargs)
+ 
+-def get_backend(requirements):
++
++def toml_load(opened_binary_file):
+     try:
+-        f = open('pyproject.toml')
+-    except FileNotFoundError:
+-        pyproject_data = {}
+-    else:
++        # tomllib is in the standard library since 3.11.0b1
++        import tomllib
++    except ImportError:
+         try:
+-            # lazy import toml here, not needed without pyproject.toml
+-            import toml
++            import tomli as tomllib
+         except ImportError as e:
+             print_err('Import error:', e)
+             # already echoed by the %pyproject_buildrequires macro
+             sys.exit(0)
++    return tomllib.load(opened_binary_file)
++
++
++def get_backend(requirements):
++    try:
++        f = open('pyproject.toml', 'rb')
++    except FileNotFoundError:
++        pyproject_data = {}
++    else:
+         with f:
+-            pyproject_data = toml.load(f)
++            pyproject_data = toml_load(f)
+ 
+     buildsystem_data = pyproject_data.get('build-system', {})
+     requirements.extend(
+@@ -224,6 +248,14 @@ def get_backend(requirements):
+         # with pyproject.toml without a specified build backend.
+         # If the default requirements change, also change them in the macro!
+         requirements.add('setuptools >= 40.8', source='default build backend')
++        # PEP 517 doesn't mandate depending on wheel when the default backend is used.
++        # Historically, it used to be assumed as necessary, but later it turned out to be wrong.
++        # See the removal in pip and build:
++        #   https://github.com/pypa/pip/pull/12449
++        #   https://github.com/pypa/build/pull/716
++        # However, the requirement *will* be generated by setuptools anyway
++        # as part of get_requires_for_build_wheel().
++        # So we might as well keep it to skip one redundant step.
+         requirements.add('wheel', source='default build backend')
+ 
+     requirements.check(source='build backend')
+@@ -247,27 +279,100 @@ def get_backend(requirements):
+ def generate_build_requirements(backend, requirements):
+     get_requires = getattr(backend, 'get_requires_for_build_wheel', None)
+     if get_requires:
+-        with hook_call():
+-            new_reqs = get_requires()
++        new_reqs = get_requires(config_settings=requirements.config_settings)
+         requirements.extend(new_reqs, source='get_requires_for_build_wheel')
+         requirements.check(source='get_requires_for_build_wheel')
+ 
+ 
+-def generate_run_requirements(backend, requirements):
++def parse_metadata_file(metadata_file):
++    return email.parser.Parser().parse(metadata_file, headersonly=True)
++
++
++def requires_from_parsed_metadata_file(message):
++    return {k: message.get_all(k, ()) for k in ('Requires', 'Requires-Dist')}
++
++
++def package_name_from_parsed_metadata_file(message):
++    return message.get('name')
++
++
++def package_name_and_requires_from_metadata_file(metadata_file):
++    message = parse_metadata_file(metadata_file)
++    package_name = package_name_from_parsed_metadata_file(message)
++    requires = requires_from_parsed_metadata_file(message)
++    return package_name, requires
++
++
++def generate_run_requirements_hook(backend, requirements):
+     hook_name = 'prepare_metadata_for_build_wheel'
+     prepare_metadata = getattr(backend, hook_name, None)
+     if not prepare_metadata:
+         raise ValueError(
+-            'build backend cannot provide build metadata '
+-            + '(incl. runtime requirements) before build'
++            'The build backend cannot provide build metadata '
++            '(incl. runtime requirements) before build. '
++            'Use the provisional -w flag to build the wheel and parse the metadata from it, '
++            'or use the -R flag not to generate runtime dependencies.'
+         )
+-    with hook_call():
+-        dir_basename = prepare_metadata('.')
+-    with open(dir_basename + '/METADATA') as f:
+-        message = email.parser.Parser().parse(f, headersonly=True)
+-    for key in 'Requires', 'Requires-Dist':
+-        requires = message.get_all(key, ())
+-        requirements.extend(requires, source=f'wheel metadata: {key}')
++    dir_basename = prepare_metadata('.', config_settings=requirements.config_settings)
++    with open(dir_basename + '/METADATA') as metadata_file:
++        name, requires = package_name_and_requires_from_metadata_file(metadata_file)
++        for key, req in requires.items():
++            requirements.extend(req,
++                                package_name=name,
++                                source=f'hook generated metadata: {key} ({name})')
++
++
++def find_built_wheel(wheeldir):
++    wheels = glob.glob(os.path.join(wheeldir, '*.whl'))
++    if not wheels:
++        return None
++    if len(wheels) > 1:
++        raise RuntimeError('Found multiple wheels in %{_pyproject_wheeldir}, '
++                           'this is not supported with %pyproject_buildrequires -w.')
++    return wheels[0]
++
++
++def generate_run_requirements_wheel(backend, requirements, wheeldir):
++    # Reuse the wheel from the previous round of %pyproject_buildrequires (if it exists)
++    wheel = find_built_wheel(wheeldir)
++    if not wheel:
++        # pip is already echoed from the macro
++        # but we need to explicitly restart if has not yet been installed
++        # see https://bugzilla.redhat.com/2169855
++        requirements.add('pip >= 19', source='%pyproject_buildrequires -w')
++        requirements.check(source='%pyproject_buildrequires -w')
++        import pyproject_wheel
++        returncode = pyproject_wheel.build_wheel(
++            wheeldir=wheeldir,
++            stdout=sys.stderr,
++            config_settings=requirements.config_settings,
++        )
++        if returncode != 0:
++            raise RuntimeError('Failed to build the wheel for %pyproject_buildrequires -w.')
++        wheel = find_built_wheel(wheeldir)
++    if not wheel:
++        raise RuntimeError('Cannot locate the built wheel for %pyproject_buildrequires -w.')
++
++    print_err(f'Reading metadata from {wheel}')
++    with zipfile.ZipFile(wheel) as wheelfile:
++        for name in wheelfile.namelist():
++            if name.count('/') == 1 and name.endswith('.dist-info/METADATA'):
++                with io.TextIOWrapper(wheelfile.open(name), encoding='utf-8') as metadata_file:
++                    name, requires = package_name_and_requires_from_metadata_file(metadata_file)
++                    for key, req in requires.items():
++                        requirements.extend(req,
++                                            package_name=name,
++                                            source=f'built wheel metadata: {key} ({name})')
++                break
++        else:
++            raise RuntimeError('Could not find *.dist-info/METADATA in built wheel.')
++
++
++def generate_run_requirements(backend, requirements, *, build_wheel, wheeldir):
++    if build_wheel:
++        generate_run_requirements_wheel(backend, requirements, wheeldir)
++    else:
++        generate_run_requirements_hook(backend, requirements)
+ 
+ 
+ def generate_tox_requirements(toxenv, requirements):
+@@ -282,7 +387,7 @@ def generate_tox_requirements(toxenv, requirements):
+              '--print-deps-to', deps.name,
+              '--print-extras-to', extras.name,
+              '--no-provision', provision.name,
+-             '-qre', toxenv],
++             '-q', '-r', '-e', toxenv],
+             check=False,
+             encoding='utf-8',
+             stdout=subprocess.PIPE,
+@@ -294,7 +399,7 @@ def generate_tox_requirements(toxenv, requirements):
+         provision_content = provision.read()
+         if provision_content and r.returncode != 0:
+             provision_requires = json.loads(provision_content)
+-            if 'minversion' in provision_requires:
++            if provision_requires.get('minversion') is not None:
+                 requirements.add(f'tox >= {provision_requires["minversion"]}',
+                                  source='tox provision (minversion)')
+             if 'requires' in provision_requires:
+@@ -326,18 +431,22 @@ def python3dist(name, op=None, version=None, python3_pkgversion="3"):
+ 
+ 
+ def generate_requires(
+-    *, include_runtime=False, toxenv=None, extras=None,
++    *, include_runtime=False, build_wheel=False, wheeldir=None, toxenv=None, extras=None,
+     get_installed_version=importlib.metadata.version,  # for dep injection
+-    generate_extras=False, python3_pkgversion="3", requirement_files=None, use_build_system=True
++    generate_extras=False, python3_pkgversion="3", requirement_files=None, use_build_system=True,
++    output, config_settings=None,
+ ):
+     """Generate the BuildRequires for the project in the current directory
+ 
++    The generated BuildRequires are written to the provided output.
++
+     This is the main Python entry point.
+     """
+     requirements = Requirements(
+         get_installed_version, extras=extras or [],
+         generate_extras=generate_extras,
+-        python3_pkgversion=python3_pkgversion
++        python3_pkgversion=python3_pkgversion,
++        config_settings=config_settings,
+     )
+ 
+     try:
+@@ -357,32 +466,42 @@ def generate_requires(
+             include_runtime = True
+             generate_tox_requirements(toxenv, requirements)
+         if include_runtime:
+-            generate_run_requirements(backend, requirements)
++            generate_run_requirements(backend, requirements, build_wheel=build_wheel, wheeldir=wheeldir)
+     except EndPass:
+         return
++    finally:
++        output.write_text(os.linesep.join(requirements.output_lines) + os.linesep)
+ 
+ 
+ def main(argv):
+     parser = argparse.ArgumentParser(
+-        description='Generate BuildRequires for a Python project.'
++        description='Generate BuildRequires for a Python project.',
++        prog='%pyproject_buildrequires',
++        add_help=False,
++    )
++    parser.add_argument(
++        '--help', action='help',
++        default=argparse.SUPPRESS,
++        help=argparse.SUPPRESS,
+     )
+     parser.add_argument(
+         '-r', '--runtime', action='store_true', default=True,
+-        help='Generate run-time requirements (default, disable with -R)',
++        help=argparse.SUPPRESS,  # Generate run-time requirements (backwards-compatibility only)
+     )
+     parser.add_argument(
+-        '-R', '--no-runtime', action='store_false', dest='runtime',
+-        help="Don't generate run-time requirements (implied by -N)",
++        '--generate-extras', action='store_true',
++        help=argparse.SUPPRESS,
+     )
+     parser.add_argument(
+-        '-e', '--toxenv', metavar='TOXENVS', action='append',
+-        help=('specify tox environments (comma separated and/or repeated)'
+-              '(implies --tox)'),
++        '-p', '--python3_pkgversion', metavar='PYTHON3_PKGVERSION',
++        default="3", help=argparse.SUPPRESS,
+     )
+     parser.add_argument(
+-        '-t', '--tox', action='store_true',
+-        help=('generate test tequirements from tox environment '
+-              '(implies --runtime)'),
++        '--output', type=pathlib.Path, required=True, help=argparse.SUPPRESS,
++    )
++    parser.add_argument(
++        '--wheeldir', metavar='PATH', default=None,
++        help=argparse.SUPPRESS,
+     )
+     parser.add_argument(
+         '-x', '--extras', metavar='EXTRAS', action='append',
+@@ -390,28 +509,49 @@ def main(argv):
+              '(e.g. -x testing,feature-x) (implies --runtime, can be repeated)',
+     )
+     parser.add_argument(
+-        '--generate-extras', action='store_true',
+-        help='Generate build requirements on Python Extras',
++        '-t', '--tox', action='store_true',
++        help=('generate test tequirements from tox environment '
++              '(implies --runtime)'),
+     )
+     parser.add_argument(
+-        '-p', '--python3_pkgversion', metavar='PYTHON3_PKGVERSION',
+-        default="3", help=('Python version for pythonXdist()'
+-                           'or pythonX.Ydist() requirements'),
++        '-e', '--toxenv', metavar='TOXENVS', action='append',
++        help=('specify tox environments (comma separated and/or repeated)'
++              '(implies --tox)'),
++    )
++    parser.add_argument(
++        '-w', '--wheel', action='store_true', default=False,
++        help=('Generate run-time requirements by building the wheel '
++              '(useful for build backends without the prepare_metadata_for_build_wheel hook)'),
++    )
++    parser.add_argument(
++        '-R', '--no-runtime', action='store_false', dest='runtime',
++        help="Don't generate run-time requirements (implied by -N)",
+     )
+     parser.add_argument(
+         '-N', '--no-use-build-system', dest='use_build_system',
+         action='store_false', help='Use -N to indicate that project does not use any build system',
+     )
+     parser.add_argument(
+-       'requirement_files', nargs='*', type=argparse.FileType('r'),
++        'requirement_files', nargs='*', type=argparse.FileType('r'),
++        metavar='REQUIREMENTS.TXT',
+         help=('Add buildrequires from file'),
+     )
++    parser.add_argument(
++        '-C',
++        dest='config_settings',
++        action='append',
++        help='Configuration settings to pass to the PEP 517 backend',
++    )
+ 
+     args = parser.parse_args(argv)
+ 
+     if not args.use_build_system:
+         args.runtime = False
+ 
++    if args.wheel:
++        if not args.wheeldir:
++            raise ValueError('--wheeldir must be set when -w.')
++
+     if args.toxenv:
+         args.tox = True
+ 
+@@ -427,12 +567,16 @@ def main(argv):
+     try:
+         generate_requires(
+             include_runtime=args.runtime,
++            build_wheel=args.wheel,
++            wheeldir=args.wheeldir,
+             toxenv=args.toxenv,
+             extras=args.extras,
+             generate_extras=args.generate_extras,
+             python3_pkgversion=args.python3_pkgversion,
+             requirement_files=args.requirement_files,
+             use_build_system=args.use_build_system,
++            output=args.output,
++            config_settings=parse_config_settings_args(args.config_settings),
+         )
+     except Exception:
+         # Log the traceback explicitly (it's useful debug info)
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_buildrequires_testcases.yaml b/SPECS/pyproject-rpm-macros/pyproject_buildrequires_testcases.yaml
+index 307af7988..892e3c3d2 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject_buildrequires_testcases.yaml
++++ b/SPECS/pyproject-rpm-macros/pyproject_buildrequires_testcases.yaml
+@@ -17,7 +17,7 @@ Insufficient version of setuptools:
+   installed:
+     setuptools: 5
+     wheel: 1
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     # empty
+   setup.py: |
+@@ -42,7 +42,7 @@ Default build system, empty setup.py:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+   include_runtime: false
+   pyproject.toml: |
+     # empty
+@@ -58,7 +58,7 @@ pyproject.toml with build-backend and setup.py:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+   setup.py: |
+     # empty
+   pyproject.toml: |
+@@ -81,7 +81,7 @@ Erroring setup.py:
+ 
+ Bad character in version:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["pkg == 0.$.^.*"]
+@@ -89,7 +89,7 @@ Bad character in version:
+ 
+ Single value version with unsupported compatible operator:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["pkg ~= 42", "foo"]
+@@ -98,7 +98,7 @@ Single value version with unsupported compatible operator:
+ 
+ Asterisk in version with unsupported compatible operator:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["pkg ~= 0.1.*", "foo"]
+@@ -107,7 +107,7 @@ Asterisk in version with unsupported compatible operator:
+ 
+ Local path as requirement:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["./pkg-1.2.3.tar.gz", "foo"]
+@@ -116,7 +116,7 @@ Local path as requirement:
+ 
+ Pip's egg=pkgName requirement not in requirements file:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["git+https://github.com/monty/spam.git@master#egg=spam", "foo"]
+@@ -125,7 +125,7 @@ Pip's egg=pkgName requirement not in requirements file:
+ 
+ URL without egg fragment as requirement:
+   installed:
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = ["git+https://github.com/pkg-dev/pkg.git@96dbe5e3", "foo"]
+@@ -137,7 +137,7 @@ Build system dependencies in pyproject.toml with extras:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = [
+@@ -186,7 +186,7 @@ Build system dependencies in pyproject.toml without extras:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+   pyproject.toml: |
+     [build-system]
+     requires = [
+@@ -268,6 +268,8 @@ Run dependencies with extras (not selected):
+ 
+         def main():
+             setup(
++                name = "pytest",
++                version = "6.6.6",
+                 setup_requires=["setuptools>=40.0"],
+                 # fmt: off
+                 extras_require={
+@@ -358,7 +360,38 @@ Run dependencies with multiple extras:
+     python3dist(dep1)
+   result: 0
+ 
+-Tox dependencies:
++Run dependencies with extras and build wheel option:
++  installed:
++    setuptools: 50
++    wheel: 1
++    pyyaml: 1
++    pip: 20
++  include_runtime: true
++  build_wheel: true
++  extras:
++    - testing
++  setup.py: *pytest_setup_py
++  expected: |
++    python3dist(setuptools) >= 40.8
++    python3dist(wheel)
++    python3dist(wheel)
++    python3dist(setuptools) >= 40
++    python3dist(pip) >= 19
++    python3dist(py) >= 1.5
++    python3dist(six) >= 1.10
++    python3dist(setuptools)
++    python3dist(attrs) >= 17.4
++    python3dist(atomicwrites) >= 1
++    python3dist(pluggy) >= 0.11
++    python3dist(more-itertools) >= 4
++    python3dist(argcomplete)
++    python3dist(hypothesis) >= 3.56
++    python3dist(nose)
++    python3dist(requests)
++  result: 0
++  stderr_contains: "Reading metadata from {wheeldir}/pytest-6.6.6-py3-none-any.whl"
++
++tox dependencies:
+   installed:
+     setuptools: 50
+     wheel: 1
+@@ -382,17 +415,27 @@ Tox dependencies:
+         toxdep2
+     commands =
+         true
+-  expected: |
+-    python3dist(setuptools) >= 40.8
+-    python3dist(wheel)
+-    python3dist(wheel)
+-    python3dist(tox-current-env) >= 0.0.6
+-    python3dist(toxdep1)
+-    python3dist(toxdep2)
+-    python3dist(inst)
++  expected:
++    - |  # tox 3
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(toxdep1)
++      python3dist(toxdep2)
++      python3dist(inst)
++    - |  # tox 4
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(tox)
++      python3dist(toxdep1)
++      python3dist(toxdep2)
++      python3dist(inst)
+   result: 0
+ 
+-Tox extras:
++tox extras:
+   installed:
+     setuptools: 50
+     wheel: 1
+@@ -424,23 +467,39 @@ Tox extras:
+         extra1
+     commands =
+         true
+-  expected: |
+-    python3dist(setuptools) >= 40.8
+-    python3dist(wheel)
+-    python3dist(wheel)
+-    python3dist(tox-current-env) >= 0.0.6
+-    python3dist(toxdep)
+-    python3dist(inst)
+-    python3dist(dep11) > 11.0
+-    python3dist(dep12)
+-    python3dist(dep21)
+-    python3dist(dep22)
+-    python3dist(dep23)
+-    python3dist(extra-dep)
+-    python3dist(extra-dep[extra_dep])
++  expected:
++    - |  # tox 3
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(toxdep)
++      python3dist(inst)
++      python3dist(dep11) > 11.0
++      python3dist(dep12)
++      python3dist(dep21)
++      python3dist(dep22)
++      python3dist(dep23)
++      python3dist(extra-dep)
++      python3dist(extra-dep[extra_dep])
++    - |  # tox 4
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(tox)
++      python3dist(toxdep)
++      python3dist(inst)
++      python3dist(dep11) > 11.0
++      python3dist(dep12)
++      python3dist(dep21)
++      python3dist(dep22)
++      python3dist(dep23)
++      python3dist(extra-dep)
++      python3dist(extra-dep[extra_dep])
+   result: 0
+ 
+-Tox provision unsatisfied:
++tox provision unsatisfied:
+   installed:
+     setuptools: 50
+     wheel: 1
+@@ -465,17 +524,27 @@ Tox provision unsatisfied:
+     deps =
+         toxdep1
+         toxdep2
+-  expected: |
+-    python3dist(setuptools) >= 40.8
+-    python3dist(wheel)
+-    python3dist(wheel)
+-    python3dist(tox-current-env) >= 0.0.6
+-    python3dist(tox) >= 3.999
+-    python3dist(setuptools) > 40.0
+-    python3dist(wheel) > 2.0
++  expected:
++    - |  # tox 3
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(tox) >= 3.999
++      python3dist(setuptools) > 40.0
++      python3dist(wheel) > 2.0
++    - |  # tox 4
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(tox) >= 3.999
++      python3dist(setuptools) > 40.0
++      python3dist(wheel) > 2.0
++      python3dist(tox) >= 3.999
+   result: 0
+ 
+-Tox provision satisfied:
++tox provision satisfied:
+   installed:
+     setuptools: 50
+     wheel: 1
+@@ -499,16 +568,64 @@ Tox provision satisfied:
+     deps =
+         toxdep1
+         toxdep2
+-  expected: |
+-    python3dist(setuptools) >= 40.8
+-    python3dist(wheel)
+-    python3dist(wheel)
+-    python3dist(tox-current-env) >= 0.0.6
+-    python3dist(tox) >= 3.5
+-    python3dist(setuptools) > 40.0
+-    python3dist(toxdep1)
+-    python3dist(toxdep2)
+-    python3dist(inst)
++  expected:
++    - |  # tox 3
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(tox) >= 3.5
++      python3dist(setuptools) > 40.0
++      python3dist(toxdep1)
++      python3dist(toxdep2)
++      python3dist(inst)
++    - |  # tox 4
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(setuptools) > 40.0
++      python3dist(tox) >= 3.5
++      python3dist(toxdep1)
++      python3dist(toxdep2)
++      python3dist(inst)
++  result: 0
++
++tox provision no minversion:
++  installed:
++    setuptools: 50
++    wheel: 1
++    tox: 3.5.3
++    tox-current-env: 0.0.6
++  toxenv:
++    - py3
++  setup.py: |
++    from setuptools import setup
++    setup(
++        name='test',
++        version='0.1',
++    )
++  tox.ini: |
++    [tox]
++    requires =
++        setuptools > 40
++        wheel > 2
++  expected:
++    - |  # tox 3
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(setuptools) > 40.0
++      python3dist(wheel) > 2.0
++    - |  # tox 4
++      python3dist(setuptools) >= 40.8
++      python3dist(wheel)
++      python3dist(wheel)
++      python3dist(tox-current-env) >= 0.0.6
++      python3dist(setuptools) > 40.0
++      python3dist(wheel) > 2.0
++      python3dist(tox)
+   result: 0
+ 
+ Default build system, unmet deps in requirements file:
+@@ -576,7 +693,7 @@ With pyproject.toml, requirements file and with -N option:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+     lxml: 3.9
+     ncclient: 1
+     cryptography: 2
+@@ -612,7 +729,7 @@ With pyproject.toml, requirements file and without -N option:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+     lxml: 3.9
+     ncclient: 1
+     cryptography: 2
+@@ -664,7 +781,6 @@ Value error if -N and -e arguments are present:
+   use_build_system: false
+   except: ValueError
+ 
+-
+ Weird and complex requirements file:
+   installed:
+     setuptools: 50
+@@ -724,7 +840,7 @@ Pre-releases are accepted:
+   installed:
+     setuptools: 50
+     wheel: 1
+-    toml: 1
++    tomli: 1
+     cffi: 1.15.0rc2
+   pyproject.toml: |
+     [build-system]
+@@ -741,3 +857,208 @@ Pre-releases are accepted:
+     python3dist(wheel)
+   stderr_contains: "Requirement satisfied: cffi"
+   result: 0
++
++
++Stdout from wrapped subprocess does not appear in output:
++  installed:
++    setuptools: 50
++    wheel: 1
++  include_runtime: false
++  setup.py: |
++    import os
++    os.system('echo LEAK?')
++    from setuptools import setup
++    setup(name='test', version='0.1')
++  expected: |
++    python3dist(setuptools) >= 40.8
++    python3dist(wheel)
++    python3dist(wheel)
++  result: 0
++
++pyproject.toml with runtime dependencies:
++  skipif: not SETUPTOOLS_60
++  installed:
++    setuptools: 50
++    wheel: 1
++    tomli: 1
++  pyproject.toml: |
++    [build-system]
++    requires = ["setuptools"]
++    build-backend = "setuptools.build_meta"
++    [project]
++    name = "my_package"
++    version = "0.1"
++    dependencies = [
++        "foo",
++        'importlib-metadata; python_version<"3.8"',
++    ]
++  expected: |
++    python3dist(setuptools)
++    python3dist(wheel)
++    python3dist(foo)
++  result: 0
++
++pyproject.toml with runtime dependencies and partially selected extras:
++  skipif: not SETUPTOOLS_60
++  installed:
++    setuptools: 50
++    wheel: 1
++    tomli: 1
++  extras:
++    - tests
++  pyproject.toml: |
++    [build-system]
++    requires = ["setuptools"]
++    build-backend = "setuptools.build_meta"
++    [project]
++    name = "my_package"
++    version = "0.1"
++    dependencies = [
++        "foo",
++        'importlib-metadata; python_version<"3.8"',
++    ]
++    [project.optional-dependencies]
++    tests = ["pytest>=5", "pytest-mock"]
++    docs = ["sphinx", "python-docs-theme"]
++  expected: |
++    python3dist(setuptools)
++    python3dist(wheel)
++    python3dist(foo)
++    python3dist(pytest) >= 5
++    python3dist(pytest-mock)
++  result: 0
++
++Self-referencing extras (sooner):
++  installed:
++    setuptools: 50
++    wheel: 1
++    tomli: 1
++  extras:
++    - dev  # this is deliberately sooner in the alphabet than the referenced ones
++  pyproject.toml: |
++    [build-system]
++    requires = ["setuptools"]
++    build-backend = "setuptools.build_meta"
++  setup.cfg: |
++    [metadata]
++    name = my_package
++    version = 0.1
++    [options]
++    install_requires =
++        foo
++        importlib-metadata; python_version<"3.8"
++    [options.extras_require]
++    tests = pytest>=5; pytest-mock
++    docs = sphinx; python-docs-theme
++    dev = my_package[docs,tests]
++  expected: |
++    python3dist(setuptools)
++    python3dist(wheel)
++    python3dist(foo)
++    python3dist(sphinx)
++    python3dist(python-docs-theme)
++    python3dist(pytest) >= 5
++    python3dist(pytest-mock)
++  result: 0
++
++Self-referencing extras (later):
++  installed:
++    setuptools: 50
++    wheel: 1
++    tomli: 1
++  extras:
++    - xdev  # this is deliberately later in the alphabet than the referenced ones
++  pyproject.toml: |
++    [build-system]
++    requires = ["setuptools"]
++    build-backend = "setuptools.build_meta"
++  setup.cfg: |
++    [metadata]
++    name = my_package
++    version = 0.1
++    [options]
++    install_requires =
++        foo
++        importlib-metadata; python_version<"3.8"
++    [options.extras_require]
++    tests = pytest>=5; pytest-mock
++    docs = sphinx; python-docs-theme
++    xdev = my_package[docs,tests]
++  expected: |
++    python3dist(setuptools)
++    python3dist(wheel)
++    python3dist(foo)
++    python3dist(sphinx)
++    python3dist(python-docs-theme)
++    python3dist(pytest) >= 5
++    python3dist(pytest-mock)
++  result: 0
++
++Self-referencing extras (maze):
++  installed:
++    setuptools: 50
++    wheel: 1
++    tomli: 1
++  extras:
++    - start
++  pyproject.toml: |
++    [build-system]
++    requires = ["setuptools"]
++    build-backend = "setuptools.build_meta"
++  setup.cfg: |
++    [metadata]
++    name = my_package
++    version = 0.1
++    [options.extras_require]
++    start = my_package[left,right]; startdep
++    left = my_package[right,forward]; leftdep
++    right = my_package[left,forward]; rightdep
++    forward = my_package[backward]; forwarddep
++    backward = my_package[left,right]; backwarddep
++    never = my_package[forward]; neverdep
++  expected: |
++    python3dist(setuptools)
++    python3dist(wheel)
++    python3dist(backwarddep)
++    python3dist(forwarddep)
++    python3dist(leftdep)
++    python3dist(rightdep)
++    python3dist(startdep)
++  result: 0
++
++config_settings_control:
++  include_runtime: false
++  config_settings:
++  pyproject.toml: |
++    [build-system]
++    build-backend = "test_backend"
++    backend-path = ["."]
++  test_backend.py: |
++    def get_requires_for_build_wheel(config_settings=None):
++        if not (config_settings is None or isinstance(config_settings, dict)):
++            raise TypeError
++        if config_settings and "test-config-setting" in config_settings:
++            return ["test-config-setting"]
++        return ["test-no-config-setting"]
++  expected: |
++    python3dist(test-no-config-setting)
++  result: 0
++
++config_settings:
++  include_runtime: false
++  config_settings:
++    test-config-setting: ""
++  pyproject.toml: |
++    [build-system]
++    build-backend = "test_backend"
++    backend-path = ["."]
++  test_backend.py: |
++    def get_requires_for_build_wheel(config_settings=None):
++        if not (config_settings is None or isinstance(config_settings, dict)):
++            raise TypeError
++        if config_settings and "test-config-setting" in config_settings:
++            return ["test-config-setting"]
++        return ["test-no-config-setting"]
++  expected: |
++    python3dist(test-config-setting)
++  result: 0
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_requirements_txt.py b/SPECS/pyproject-rpm-macros/pyproject_requirements_txt.py
+index d2389e810..5ff1f26f5 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject_requirements_txt.py
++++ b/SPECS/pyproject-rpm-macros/pyproject_requirements_txt.py
+@@ -98,6 +98,4 @@ def expand_env_vars(lines):
+             return match['var']
+         return value
+     for line in lines:
+-        if match := ENV_VAR_RE.search(line):
+-            var = match['var']
+         yield ENV_VAR_RE.sub(repl, line)
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_save_files.py b/SPECS/pyproject-rpm-macros/pyproject_save_files.py
+index 6cd53e778..39448828a 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject_save_files.py
++++ b/SPECS/pyproject-rpm-macros/pyproject_save_files.py
+@@ -12,6 +12,9 @@ from importlib.metadata import Distribution
+ # From RPM's build/files.c strtokWithQuotes delim argument
+ RPM_FILES_DELIMETERS = ' \n\t'
+ 
++# See the comment in the macro that wraps this script
++RPM_PERCENTAGES_COUNT = int(os.getenv('RPM_PERCENTAGES_COUNT', '2'))
++
+ # RPM hardcodes the lists of manpage extensions and directories,
+ # so we have to maintain separate ones :(
+ # There is an issue for RPM to provide the lists as macros:
+@@ -154,8 +157,8 @@ def add_lang_to_module(paths, module_name, path):
+     Returns True if the language code detection was successful
+     """
+     for i, parent in enumerate(path.parents):
+-        if i > 0 and parent.name == 'locale':
+-            lang_country_code = path.parents[i-1].name
++        if parent.name == 'LC_MESSAGES':
++            lang_country_code = path.parents[i+1].name
+             break
+     else:
+         return False
+@@ -286,6 +289,36 @@ def module_names_from_path(path):
+         return {'.'.join(parts[:x+1]) for x in range(len(parts))}
+ 
+ 
++def is_license_file(path, license_files, license_directories):
++    """
++    Check if the given BuildrootPath path matches any of the "License-File" entries.
++    The path is considered matched when resolved from any of the license_directories
++    matches string-wise what is stored in any "License-File" entry (license_files).
++
++    Examples:
++        >>> site_packages = BuildrootPath('/usr/lib/python3.12/site-packages')
++        >>> distinfo = site_packages / 'foo-1.0.dist-info'
++        >>> license_directories = [distinfo / 'licenses', distinfo]
++        >>> license_files = ['LICENSE.txt', 'AUTHORS.md']
++        >>> is_license_file(distinfo / 'AUTHORS.md', license_files, license_directories)
++        True
++        >>> is_license_file(distinfo / 'licenses/LICENSE.txt', license_files, license_directories)
++        True
++        >>> # we don't match based on directory only
++        >>> is_license_file(distinfo / 'licenses/COPYING', license_files, license_directories)  
++        False
++        >>> is_license_file(site_packages / 'foo/LICENSE.txt', license_files, license_directories)
++        False
++    """
++    if not license_files or not license_directories:
++        return False
++    for license_dir in license_directories:
++        if (path.is_relative_to(license_dir) and
++                str(path.relative_to(license_dir)) in license_files):
++            return True
++    return False
++
++
+ def classify_paths(
+     record_path, parsed_record_content, metadata, sitedirs, python_version, prefix
+ ):
+@@ -311,24 +344,36 @@ def classify_paths(
+         "other": {"files": []},  # regular %file entries we could not parse :(
+     }
+ 
++    license_files = metadata.get_all('License-File')
++    license_directory = distinfo / 'licenses'  # See PEP 639 "Root License Directory"
++    # setuptools was the first known build backend to implement License-File.
++    # Unfortunately they don't put licenses to the license directory (yet):
++    #     https://github.com/pypa/setuptools/issues/3596
++    # Hence, we check licenses in both licenses and dist-info
++    license_directories = (license_directory, distinfo)
++
+     # In RECORDs generated by pip, there are no directories, only files.
+     # The example RECORD from PEP 376 does not contain directories either.
+     # Hence, we'll only assume files, but TODO get it officially documented.
+-    license_files = metadata.get_all('License-File')
+     for path in parsed_record_content:
+         if path.suffix == ".pyc":
+             # we handle bytecode separately
+             continue
+ 
+-        if path.parent == distinfo:
+-            if path.name in ("RECORD", "REQUESTED"):
++        if distinfo in path.parents:
++            if path.parent == distinfo and path.name in ("RECORD", "REQUESTED"):
+                 # RECORD and REQUESTED files are removed in %pyproject_install
+                 # See PEP 627
+                 continue
+-            if license_files and path.name in license_files:
++            if is_license_file(path, license_files, license_directories):
+                 paths["metadata"]["licenses"].append(path)
+             else:
+                 paths["metadata"]["files"].append(path)
++            # nested directories within distinfo
++            index = path.parents.index(distinfo)
++            for parent in list(path.parents)[:index]:  # no direct slice until Python 3.10
++                if parent not in paths["metadata"]["dirs"]:
++                    paths["metadata"]["dirs"].append(parent)
+             continue
+ 
+         for sitedir in sitedirs:
+@@ -399,13 +444,13 @@ def escape_rpm_path(path):
+         '"/usr/lib/python3.9/site-packages/setuptools/script (dev).tmpl"'
+ 
+         >>> escape_rpm_path('/usr/share/data/100%valid.path')
+-        '/usr/share/data/100%%%%%%%%valid.path'
++        '/usr/share/data/100%%valid.path'
+ 
+         >>> escape_rpm_path('/usr/share/data/100 % valid.path')
+-        '"/usr/share/data/100 %%%%%%%% valid.path"'
++        '"/usr/share/data/100 %% valid.path"'
+ 
+         >>> escape_rpm_path('/usr/share/data/1000 %% valid.path')
+-        '"/usr/share/data/1000 %%%%%%%%%%%%%%%% valid.path"'
++        '"/usr/share/data/1000 %%%% valid.path"'
+ 
+         >>> escape_rpm_path('/usr/share/data/spaces and "quotes"')
+         Traceback (most recent call last):
+@@ -419,10 +464,7 @@ def escape_rpm_path(path):
+     """
+     orig_path = path = str(path)
+     if "%" in path:
+-        # Escaping by 8 %s has been verified in RPM 4.16 and 4.17, but probably not stable
+-        # See this thread http://lists.rpm.org/pipermail/rpm-list/2021-June/002048.html
+-        # On the CI, we build tests/escape_percentages.spec to verify this assumption
+-        path = path.replace("%", "%" * 8)
++        path = path.replace("%", "%" * RPM_PERCENTAGES_COUNT)
+     if any(symbol in path for symbol in RPM_FILES_DELIMETERS):
+         if '"' in path:
+             # As far as we know, RPM cannot list such file individually
+@@ -480,6 +522,12 @@ def generate_file_list(paths_dict, module_globs, include_others=False):
+                     done_modules.add(name)
+                 done_globs.add(glob)
+ 
++    # Users using '*' don't care about the files in the package, so it's ok
++    # not to fail the build when no modules are detected
++    # There can be legitimate reasons to create a package without Python modules
++    if not modules and fnmatch.fnmatchcase("", glob):
++        done_globs.add(glob)
++
+     missed = module_globs - done_globs
+     if missed:
+         missed_text = ", ".join(sorted(missed))
+@@ -488,6 +536,50 @@ def generate_file_list(paths_dict, module_globs, include_others=False):
+     return sorted(files)
+ 
+ 
++def generate_module_list(paths_dict, module_globs):
++    """
++    This function takes the paths_dict created by the classify_paths() function and
++    reads the modules names from it.
++    It filters those whose top-level module names match any of the provided module_globs.
++
++    Returns list with matching qualified module names.
++
++    Examples:
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'foo'})
++        ['foo', 'foo.bar']
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'*foo'})
++        ['foo', 'foo.bar']
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'foo', 'baz'})
++        ['baz', 'foo', 'foo.bar']
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'*'})
++        ['baz', 'foo', 'foo.bar']
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'bar'})
++        []
++
++    Submodules aren't discovered:
++
++        >>> generate_module_list({'module_names': {'foo', 'foo.bar', 'baz'}}, {'*bar'})
++        []
++    """
++
++    module_names = paths_dict['module_names']
++    filtered_module_names = set()
++
++    for glob in module_globs:
++        for name in module_names:
++            # Match the top-level part of the qualified name, eg. 'foo.bar.baz' -> 'foo'
++            top_level_name = name.split('.')[0]
++            if fnmatch.fnmatchcase(top_level_name, glob):
++                filtered_module_names.add(name)
++
++    return sorted(filtered_module_names)
++
++
+ def parse_varargs(varargs):
+     """
+     Parse varargs from the %pyproject_save_files macro
+@@ -581,7 +673,7 @@ def load_parsed_record(pyproject_record):
+         content = json.load(pyproject_record_file)
+ 
+     if len(content) > 1:
+-        raise FileExistsError("%pyproject install has found more than one *.dist-info/RECORD file. "
++        raise FileExistsError("%pyproject_install has found more than one *.dist-info/RECORD file. "
+                               "Currently, %pyproject_save_files supports only one wheel → one file list mapping. "
+                               "Feel free to open a bugzilla for pyproject-rpm-macros and describe your usecase.")
+ 
+@@ -601,12 +693,15 @@ def dist_metadata(buildroot, record_path):
+     return dist.metadata
+ 
+ 
+-def pyproject_save_files_and_modules(buildroot, sitelib, sitearch, python_version, pyproject_record, prefix, varargs):
++def pyproject_save_files_and_modules(buildroot, sitelib, sitearch, python_version, pyproject_record, prefix, assert_license, varargs):
+     """
+     Takes arguments from the %{pyproject_save_files} macro
+ 
+     Returns tuple: list of paths for the %files section and list of module names
+     for the %check section
++
++    Raises ValueError when assert_license is true and no License-File (PEP 639)
++    is found.
+     """
+     # On 32 bit architectures, sitelib equals to sitearch
+     # This saves us browsing one directory twice
+@@ -616,23 +711,35 @@ def pyproject_save_files_and_modules(buildroot, sitelib, sitearch, python_versio
+     parsed_records = load_parsed_record(pyproject_record)
+ 
+     final_file_list = []
+-    all_module_names = set()
++    final_module_list = []
++
++    # we assume OK when not asserting
++    license_ok = not assert_license
+ 
+     for record_path, files in parsed_records.items():
+         metadata = dist_metadata(buildroot, record_path)
+         paths_dict = classify_paths(
+             record_path, files, metadata, sitedirs, python_version, prefix
+         )
++        license_ok = license_ok or bool(paths_dict["metadata"]["licenses"])
+ 
+         final_file_list.extend(
+             generate_file_list(paths_dict, globs, include_auto)
+         )
+-        all_module_names.update(paths_dict["module_names"])
++        final_module_list.extend(
++            generate_module_list(paths_dict, globs)
++        )
+ 
+-    # Sort values, so they are always checked in the same order
+-    all_module_names = sorted(all_module_names)
++    if not license_ok:
++        raise ValueError(
++            "No License-File (PEP 639) in upstream metadata found. "
++            "Adjust the upstream metadata "
++            "if the project's build backend supports PEP 639 "
++            "or use `%pyproject_save_files -L` "
++            "and include the %license file in %files manually."
++        )
+ 
+-    return final_file_list, all_module_names
++    return final_file_list, final_module_list
+ 
+ 
+ def main(cli_args):
+@@ -643,6 +750,7 @@ def main(cli_args):
+         cli_args.python_version,
+         cli_args.pyproject_record,
+         cli_args.prefix,
++        cli_args.assert_license,
+         cli_args.varargs,
+     )
+ 
+@@ -651,17 +759,39 @@ def main(cli_args):
+ 
+ 
+ def argparser():
+-    parser = argparse.ArgumentParser()
++    parser = argparse.ArgumentParser(
++        description="Create %{pyproject_files} for a Python project.",
++        prog="%pyproject_save_files",
++        add_help=False,
++        # custom usage to add +auto
++        usage="%(prog)s  [-l|-L] MODULE_GLOB [MODULE_GLOB ...] [+auto]",
++    )
++    parser.add_argument(
++        '--help', action='help',
++        default=argparse.SUPPRESS,
++        help=argparse.SUPPRESS,
++    )
+     r = parser.add_argument_group("required arguments")
+-    r.add_argument("--output-files", type=PosixPath, required=True)
+-    r.add_argument("--output-modules", type=PosixPath, required=True)
+-    r.add_argument("--buildroot", type=PosixPath, required=True)
+-    r.add_argument("--sitelib", type=BuildrootPath, required=True)
+-    r.add_argument("--sitearch", type=BuildrootPath, required=True)
+-    r.add_argument("--python-version", type=str, required=True)
+-    r.add_argument("--pyproject-record", type=PosixPath, required=True)
+-    r.add_argument("--prefix", type=PosixPath, required=True)
+-    parser.add_argument("varargs", nargs="+")
++    r.add_argument("--output-files", type=PosixPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--output-modules", type=PosixPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--buildroot", type=PosixPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--sitelib", type=BuildrootPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--sitearch", type=BuildrootPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--python-version", type=str, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--pyproject-record", type=PosixPath, required=True, help=argparse.SUPPRESS)
++    r.add_argument("--prefix", type=PosixPath, required=True, help=argparse.SUPPRESS)
++    parser.add_argument(
++        "-l", "--assert-license", action="store_true", default=False,
++        help="Fail when no License-File (PEP 639) is found.",
++    )
++    parser.add_argument(
++        "-L", "--no-assert-license", action="store_false", dest="assert_license",
++        help="Don't fail when no License-File (PEP 639) is found (the default).",
++    )
++    parser.add_argument(
++        "varargs", nargs="+", metavar="MODULE_GLOB",
++        help="Shell-like glob matching top-level module names to save into %%{pyproject_files}",
++    )
+     return parser
+ 
+ 
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_save_files_test_data.yaml b/SPECS/pyproject-rpm-macros/pyproject_save_files_test_data.yaml
+index eeed5d358..8f6775dee 100644
+--- a/SPECS/pyproject-rpm-macros/pyproject_save_files_test_data.yaml
++++ b/SPECS/pyproject-rpm-macros/pyproject_save_files_test_data.yaml
+@@ -230,6 +230,28 @@ classified:
+       - /usr/lib/python3.7/site-packages/ipykernel-5.2.1.dist-info/COPYING.md
+       - /usr/lib/python3.7/site-packages/ipykernel-5.2.1.dist-info/INSTALLER
+       licenses: []
++    lang:
++      ipykernel:
++        fr:
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/nbjs.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/nbui.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/notebook.mo
++        ja:
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/nbjs.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/nbui.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/notebook.mo
++        nl:
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/nbjs.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/nbui.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/notebook.mo
++        ru:
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/nbjs.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/nbui.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/notebook.mo
++        zh:
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/nbjs.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/nbui.mo
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/notebook.mo
+     modules:
+       ipykernel:
+       - files:
+@@ -279,6 +301,8 @@ classified:
+         - /usr/lib/python3.7/site-packages/ipykernel/gui/gtk3embed.py
+         - /usr/lib/python3.7/site-packages/ipykernel/gui/gtkembed.py
+         - /usr/lib/python3.7/site-packages/ipykernel/heartbeat.py
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/__init__.py
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/__pycache__/__init__.cpython-37{,.opt-?}.pyc
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__init__.py
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__/__init__.cpython-37{,.opt-?}.pyc
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__/blocking.cpython-37{,.opt-?}.pyc
+@@ -362,6 +386,18 @@ classified:
+         - /usr/lib/python3.7/site-packages/ipykernel/comm/__pycache__
+         - /usr/lib/python3.7/site-packages/ipykernel/gui
+         - /usr/lib/python3.7/site-packages/ipykernel/gui/__pycache__
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/__pycache__
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/nl
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN
++        - /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__
+         - /usr/lib/python3.7/site-packages/ipykernel/inprocess/tests
+@@ -409,10 +445,27 @@ classified:
+     other:
+       files:
+       - /usr/lib/python3.7/site-packages/zope.event-4.4-py3.7-nspkg.pth
++  comic2pdf:
++    metadata:
++      dirs:
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info
++      docs: []
++      files:
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/METADATA
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/WHEEL
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/entry_points.txt
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/top_level.txt
++      - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/zip-safe
++      licenses: []
++    modules: []
++    other:
++      files:
++      - /usr/bin/comic2pdf.py
+   django:
+     metadata:
+       dirs:
+       - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info
++      - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses
+       docs: []
+       files:
+       - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/AUTHORS
+@@ -422,8 +475,8 @@ classified:
+       - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/entry_points.txt
+       - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/top_level.txt
+       licenses:
+-      - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/LICENSE
+-      - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/LICENSE.python
++      - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses/LICENSE
++      - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses/LICENSE.python
+     lang:
+       django:
+         af:
+@@ -7542,6 +7595,18 @@ dumped:
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/comm/__pycache__'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/gui'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/gui/__pycache__'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/__pycache__'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/nl'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN'
++    - '%dir /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/inprocess'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/inprocess/tests'
+@@ -7551,6 +7616,21 @@ dumped:
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/resources'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/tests'
+     - '%dir /usr/lib/python3.7/site-packages/ipykernel/tests/__pycache__'
++    - '%lang(fr) /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/nbjs.mo'
++    - '%lang(fr) /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/nbui.mo'
++    - '%lang(fr) /usr/lib/python3.7/site-packages/ipykernel/i18n/fr_FR/LC_MESSAGES/notebook.mo'
++    - '%lang(ja) /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/nbjs.mo'
++    - '%lang(ja) /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/nbui.mo'
++    - '%lang(ja) /usr/lib/python3.7/site-packages/ipykernel/i18n/ja_JP/LC_MESSAGES/notebook.mo'
++    - '%lang(nl) /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/nbjs.mo'
++    - '%lang(nl) /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/nbui.mo'
++    - '%lang(nl) /usr/lib/python3.7/site-packages/ipykernel/i18n/nl/LC_MESSAGES/notebook.mo'
++    - '%lang(ru) /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/nbjs.mo'
++    - '%lang(ru) /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/nbui.mo'
++    - '%lang(ru) /usr/lib/python3.7/site-packages/ipykernel/i18n/ru_RU/LC_MESSAGES/notebook.mo'
++    - '%lang(zh) /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/nbjs.mo'
++    - '%lang(zh) /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/nbui.mo'
++    - '%lang(zh) /usr/lib/python3.7/site-packages/ipykernel/i18n/zh_CN/LC_MESSAGES/notebook.mo'
+     - /usr/lib/python3.7/site-packages/ipykernel-5.2.1.dist-info/COPYING.md
+     - /usr/lib/python3.7/site-packages/ipykernel-5.2.1.dist-info/INSTALLER
+     - /usr/lib/python3.7/site-packages/ipykernel-5.2.1.dist-info/METADATA
+@@ -7602,6 +7682,8 @@ dumped:
+     - /usr/lib/python3.7/site-packages/ipykernel/gui/gtk3embed.py
+     - /usr/lib/python3.7/site-packages/ipykernel/gui/gtkembed.py
+     - /usr/lib/python3.7/site-packages/ipykernel/heartbeat.py
++    - /usr/lib/python3.7/site-packages/ipykernel/i18n/__init__.py
++    - /usr/lib/python3.7/site-packages/ipykernel/i18n/__pycache__/__init__.cpython-37{,.opt-?}.pyc
+     - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__init__.py
+     - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__/__init__.cpython-37{,.opt-?}.pyc
+     - /usr/lib/python3.7/site-packages/ipykernel/inprocess/__pycache__/blocking.cpython-37{,.opt-?}.pyc
+@@ -7696,6 +7778,7 @@ dumped:
+     - ipykernel.gui.gtk3embed
+     - ipykernel.gui.gtkembed
+     - ipykernel.heartbeat
++    - ipykernel.i18n
+     - ipykernel.inprocess
+     - ipykernel.inprocess.blocking
+     - ipykernel.inprocess.channels
+@@ -7738,7 +7821,6 @@ dumped:
+     - ipykernel.tests.utils
+     - ipykernel.trio_runner
+     - ipykernel.zmqshell
+-    - ipykernel_launcher
+ - - zope
+   - zope
+   - - '%dir /usr/lib/python3.7/site-packages/zope'
+@@ -7763,9 +7845,20 @@ dumped:
+     - zope.event
+     - zope.event.classhandler
+     - zope.event.tests
++- - comic2pdf
++  - '*'
++  - - '%dir /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info'
++    - /usr/bin/comic2pdf.py
++    - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/METADATA
++    - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/WHEEL
++    - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/entry_points.txt
++    - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/top_level.txt
++    - /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/zip-safe
++  - []
+ - - django
+   - django
+   - - '%dir /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info'
++    - '%dir /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses'
+     - '%dir /usr/lib/python3.7/site-packages/django'
+     - '%dir /usr/lib/python3.7/site-packages/django/__pycache__'
+     - '%dir /usr/lib/python3.7/site-packages/django/apps'
+@@ -11349,8 +11442,8 @@ dumped:
+     - '%lang(zh) /usr/lib/python3.7/site-packages/django/contrib/sessions/locale/zh_Hant/LC_MESSAGES/django.mo'
+     - '%lang(zh) /usr/lib/python3.7/site-packages/django/contrib/sites/locale/zh_Hans/LC_MESSAGES/django.mo'
+     - '%lang(zh) /usr/lib/python3.7/site-packages/django/contrib/sites/locale/zh_Hant/LC_MESSAGES/django.mo'
+-    - '%license /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/LICENSE'
+-    - '%license /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/LICENSE.python'
++    - '%license /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses/LICENSE'
++    - '%license /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/licenses/LICENSE.python'
+     - /usr/bin/django-admin
+     - /usr/bin/django-admin.py
+     - /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/AUTHORS
+@@ -15646,6 +15739,24 @@ records:
+       ipykernel/gui/gtk3embed.py,sha256=mjUXqAzPxF956OcmWdWzvU2VLJoZ4ZyXrqCImJcn_Ug,3222
+       ipykernel/gui/gtkembed.py,sha256=yYp-Npg8jPrfXiN6mrzFy8L6JS7JeBOHz5WxTxSdvMA,3131
+       ipykernel/heartbeat.py,sha256=ZwIsWYgvjZQgFLjw6PrD9GJnN9XO1CzafUc89DEiPaA,4194
++      ipykernel/i18n/__init__.py,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/__pycache__/__init__.cpython-37.opt-1.pyc,,
++      ipykernel/i18n/__pycache__/__init__.cpython-37.pyc,,
++      ipykernel/i18n/fr_FR/LC_MESSAGES/nbjs.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/fr_FR/LC_MESSAGES/nbui.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/fr_FR/LC_MESSAGES/notebook.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ja_JP/LC_MESSAGES/nbjs.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ja_JP/LC_MESSAGES/nbui.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ja_JP/LC_MESSAGES/notebook.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/nl/LC_MESSAGES/nbjs.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/nl/LC_MESSAGES/nbui.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/nl/LC_MESSAGES/notebook.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ru_RU/LC_MESSAGES/nbjs.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ru_RU/LC_MESSAGES/nbui.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/ru_RU/LC_MESSAGES/notebook.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/zh_CN/LC_MESSAGES/nbjs.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/zh_CN/LC_MESSAGES/nbui.mo,sha256=0000000000000000000000000000000000000000000,10
++      ipykernel/i18n/zh_CN/LC_MESSAGES/notebook.mo,sha256=0000000000000000000000000000000000000000000,10
+       ipykernel/inprocess/__init__.py,sha256=UrsfQEevAq5OZ3au4Fn9bu_7c6b_QqroRIE7vE4PB_o,211
+       ipykernel/inprocess/__pycache__/__init__.cpython-37.pyc,,
+       ipykernel/inprocess/__pycache__/blocking.cpython-37.pyc,,
+@@ -15743,6 +15854,17 @@ records:
+       zope/event/classhandler.py,sha256=CEx6issKWSia0Wruob_jIQI2EfYX45krokoTHyVsJFQ,1816
+       zope/event/tests.py,sha256=bvEzvOmPoQETMqYiqsR9EeVsC8Dzy-HOclfpQFVjDhE,1871
+ 
++  comic2pdf:
++    path: /usr/lib/python3.7/site-packages/comic2pdf-3.1.0.dist-info/RECORD
++    content: |
++      ../../../bin/comic2pdf.py,sha256=ad0XbWxj2fzn_oYi1h-usY8jsxAvfpYA1aaify1Ym88,3266
++      comic2pdf-3.1.0.dist-info/METADATA,sha256=qMVNbSPY02NdWfGex5yWNxoK1d96ereES-XoKxshVEA,3195
++      comic2pdf-3.1.0.dist-info/WHEEL,sha256=G16H4A3IeoQmnOrYV4ueZGKSjhipXx8zc8nu9FGlvMA,92
++      comic2pdf-3.1.0.dist-info/entry_points.txt,sha256=uORK0FJD-i46W74x2mNHfloSPS4QElN3-Y0vKQZ7svw,46
++      comic2pdf-3.1.0.dist-info/top_level.txt,sha256=AbpHGcgLb-kRsJGnwFEktk7uzpZOCcBY74-YBdrKVGs,1
++      comic2pdf-3.1.0.dist-info/zip-safe,sha256=AbpHGcgLb-kRsJGnwFEktk7uzpZOCcBY74-YBdrKVGs,1
++      comic2pdf-3.1.0.dist-info/RECORD,,
++
+   django:
+     path: /usr/lib/python3.7/site-packages/Django-3.0.7.dist-info/RECORD
+     content: |
+@@ -15751,8 +15873,8 @@ records:
+       ../../../bin/django-admin.py,sha256=OOv0QKYqhDD2O4X3HQx3gFFQ-CC7hSLnWuzZnQXeiiA,115
+       Django-3.0.7.dist-info/AUTHORS,sha256=cV29hNQ1SpKhTmZuPff3LWHyQ7mHNBWP7_0JufEUHbs,36806
+       Django-3.0.7.dist-info/INSTALLER,sha256=zuuue4knoyJ-UwPPXg8fezS7VCrXJQrAP7zeNuwvFQg,4
+-      Django-3.0.7.dist-info/LICENSE,sha256=uEZBXRtRTpwd_xSiLeuQbXlLxUbKYSn5UKGM0JHipmk,1552
+-      Django-3.0.7.dist-info/LICENSE.python,sha256=Z-Pr3SuMPxOcaosqZSgr_NAjh2cFRcFyPZjP7nMeQrQ,13231
++      Django-3.0.7.dist-info/licenses/LICENSE,sha256=uEZBXRtRTpwd_xSiLeuQbXlLxUbKYSn5UKGM0JHipmk,1552
++      Django-3.0.7.dist-info/licenses/LICENSE.python,sha256=Z-Pr3SuMPxOcaosqZSgr_NAjh2cFRcFyPZjP7nMeQrQ,13231
+       Django-3.0.7.dist-info/METADATA,sha256=0ZU0N0E-CHKarXMLp4oOYf7EMUHR8eJ79f2yqw2NwoM,3574
+       Django-3.0.7.dist-info/RECORD,,
+       Django-3.0.7.dist-info/WHEEL,sha256=g4nMs7d-Xl9-xC9XovUrsDHGXt-FT0E17Yqo92DEfvY,92
+diff --git a/SPECS/pyproject-rpm-macros/pyproject_wheel.py b/SPECS/pyproject-rpm-macros/pyproject_wheel.py
+new file mode 100644
+index 000000000..6d621763d
+--- /dev/null
++++ b/SPECS/pyproject-rpm-macros/pyproject_wheel.py
+@@ -0,0 +1,78 @@
++import argparse
++import sys
++import subprocess
++
++
++def parse_config_settings_args(config_settings):
++    """
++    Given a list of config `KEY=VALUE` formatted config settings,
++    return a dictionary that can be passed to PEP 517 hook functions.
++    """
++    if not config_settings:
++        return config_settings
++    new_config_settings = {}
++    for arg in config_settings:
++        key, _, value = arg.partition('=')
++        if key in new_config_settings:
++            if not isinstance(new_config_settings[key], list):
++                # convert the existing value to a list
++                new_config_settings[key] = [new_config_settings[key]]
++            new_config_settings[key].append(value)
++        else:
++            new_config_settings[key] = value
++    return new_config_settings
++
++
++def get_config_settings_args(config_settings):
++    """
++    Given a dictionary of PEP 517 backend config_settings,
++    yield --config-settings args that can be passed to pip's CLI
++    """
++    if not config_settings:
++        return
++    for key, values in config_settings.items():
++        if not isinstance(values, list):
++            values = [values]
++        for value in values:
++            if value == '':
++                yield f'--config-settings={key}'
++            else:
++                yield f'--config-settings={key}={value}'
++
++
++def build_wheel(*, wheeldir, stdout=None, config_settings=None):
++    command = (
++        sys.executable,
++        '-m', 'pip',
++        'wheel',
++        '--wheel-dir', wheeldir,
++        '--no-deps',
++        '--use-pep517',
++        '--no-build-isolation',
++        '--disable-pip-version-check',
++        '--no-clean',
++        '--progress-bar', 'off',
++        '--verbose',
++        *get_config_settings_args(config_settings),
++        '.',
++    )
++    cp = subprocess.run(command, stdout=stdout)
++    return cp.returncode
++
++
++def parse_args(argv=None):
++    parser = argparse.ArgumentParser(prog='%pyproject_wheel')
++    parser.add_argument('wheeldir', help=argparse.SUPPRESS)
++    parser.add_argument(
++        '-C',
++        dest='config_settings',
++        action='append',
++        help='Configuration settings to pass to the PEP 517 backend',
++    )
++    args = parser.parse_args(argv)
++    args.config_settings = parse_config_settings_args(args.config_settings)
++    return args
++
++
++if __name__ == '__main__':
++    sys.exit(build_wheel(**vars(parse_args())))
+diff --git a/SPECS/pyproject-rpm-macros/rpminspect.yaml b/SPECS/pyproject-rpm-macros/rpminspect.yaml
+new file mode 100644
+index 000000000..9392653b7
+--- /dev/null
++++ b/SPECS/pyproject-rpm-macros/rpminspect.yaml
+@@ -0,0 +1,7 @@
++# completely disabled inspections:
++inspections:
++    # there is no upstream and we regularly change all files
++    addedfiles: off
++    changedfiles: off
++    filesize: off
++    upstream: off
+diff --git a/SPECS/pyproject-rpm-macros/test_pyproject_buildrequires.py b/SPECS/pyproject-rpm-macros/test_pyproject_buildrequires.py
+index 15075c5db..0fa07db6c 100644
+--- a/SPECS/pyproject-rpm-macros/test_pyproject_buildrequires.py
++++ b/SPECS/pyproject-rpm-macros/test_pyproject_buildrequires.py
+@@ -1,11 +1,15 @@
+ from pathlib import Path
+ import importlib.metadata
+ 
++import packaging.version
+ import pytest
++import setuptools
+ import yaml
+ 
+ from pyproject_buildrequires import generate_requires
+ 
++SETUPTOOLS_VERSION = packaging.version.parse(setuptools.__version__)
++SETUPTOOLS_60 = SETUPTOOLS_VERSION >= packaging.version.parse('60')
+ 
+ testcases = {}
+ with Path(__file__).parent.joinpath('pyproject_buildrequires_testcases.yaml').open() as f:
+@@ -13,18 +17,24 @@ with Path(__file__).parent.joinpath('pyproject_buildrequires_testcases.yaml').op
+ 
+ 
+ @pytest.mark.parametrize('case_name', testcases)
+-def test_data(case_name, capsys, tmp_path, monkeypatch):
++def test_data(case_name, capfd, tmp_path, monkeypatch):
+     case = testcases[case_name]
+ 
+     cwd = tmp_path.joinpath('cwd')
+     cwd.mkdir()
+     monkeypatch.chdir(cwd)
++    wheeldir = cwd.joinpath('wheeldir')
++    wheeldir.mkdir()
++    output = tmp_path.joinpath('output.txt')
+ 
+     if case.get('xfail'):
+         pytest.xfail(case.get('xfail'))
+ 
++    if case.get('skipif') and eval(case.get('skipif')):
++        pytest.skip(case.get('skipif'))
++
+     for filename in case:
+-        file_types = ('.toml', '.py', '.in', '.ini', '.txt')
++        file_types = ('.toml', '.py', '.in', '.ini', '.txt', '.cfg')
+         if filename.endswith(file_types):
+             cwd.joinpath(filename).write_text(case[filename])
+ 
+@@ -45,11 +55,15 @@ def test_data(case_name, capsys, tmp_path, monkeypatch):
+         generate_requires(
+             get_installed_version=get_installed_version,
+             include_runtime=case.get('include_runtime', use_build_system),
++            build_wheel=case.get('build_wheel', False),
++            wheeldir=str(wheeldir),
+             extras=case.get('extras', []),
+             toxenv=case.get('toxenv', None),
+             generate_extras=case.get('generate_extras', False),
+             requirement_files=requirement_files,
+             use_build_system=use_build_system,
++            output=output,
++            config_settings=case.get('config_settings'),
+         )
+     except SystemExit as e:
+         assert e.code == case['result']
+@@ -64,10 +78,16 @@ def test_data(case_name, capsys, tmp_path, monkeypatch):
+         # if we ever need to do that, we can remove the check or change it:
+         assert 'expected' in case or 'stderr_contains' in case
+ 
+-        out, err = capsys.readouterr()
++        out, err = capfd.readouterr()
++        dependencies = output.read_text()
+ 
+         if 'expected' in case:
+-            assert out == case['expected']
++            expected = case['expected']
++            if isinstance(expected, list):
++                # at least one of them needs to match
++                assert dependencies in expected
++            else:
++                assert dependencies == expected
+ 
+         # stderr_contains may be a string or list of strings
+         stderr_contains = case.get('stderr_contains')
+@@ -75,7 +95,7 @@ def test_data(case_name, capsys, tmp_path, monkeypatch):
+             if isinstance(stderr_contains, str):
+                 stderr_contains = [stderr_contains]
+             for expected_substring in stderr_contains:
+-                assert expected_substring in err
++                assert expected_substring.format(**locals()) in err
+     finally:
+         for req in requirement_files:
+             req.close()
+diff --git a/SPECS/python-packaging/python-packaging.spec b/SPECS/python-packaging/python-packaging.spec
+index 4e41ed110..6410842b0 100644
+--- a/SPECS/python-packaging/python-packaging.spec
++++ b/SPECS/python-packaging/python-packaging.spec
+@@ -39,6 +39,9 @@ Core utilities for Python packages
+ %prep
+ %autosetup -n packaging-%{version}
+ 
++%generate_buildrequires
++%pyproject_buildrequires
++
+ %build
+ %pyproject_wheel
+ 
