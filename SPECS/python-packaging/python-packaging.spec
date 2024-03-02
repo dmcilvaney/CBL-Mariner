@@ -39,9 +39,6 @@ Core utilities for Python packages
 %prep
 %autosetup -n packaging-%{version}
 
-%generate_buildrequires
-%pyproject_buildrequires
-
 %build
 %pyproject_wheel
 
