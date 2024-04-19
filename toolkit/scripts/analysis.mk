@@ -86,3 +86,35 @@ sodiff-check: $(BUILT_PACKAGES_FILE) | $(SODIFF_REPO_FILE)
 	<$(BUILT_PACKAGES_FILE) $(SODIFF_SCRIPT) $(RPMS_DIR)/ $(SODIFF_REPO_FILE) $(RELEASE_MAJOR_ID) $(SODIFF_OUTPUT_FOLDER)
 
 package-toolkit: $(SODIFF_REPO_FILE)
+
+# Code search
+code_search_build_dir    = $(BUILD_DIR)/code_search
+code_search_logs_path    = $(LOGS_DIR)/code_search/code_search.log
+code_search_results_file = $(OUT_DIR)/code_search_results.txt
+
+# Empty regex will prompt the user to enter a search regex
+SEARCH_REGEX ?= ""
+
+clean: clean-code-search
+clean-code-search:
+	@echo Verifying no mountpoints present in $(code_search_build_dir)
+	$(SCRIPTS_DIR)/safeunmount.sh "$(code_search_build_dir)" && \
+	rm -rf $(code_search_build_dir)
+	rm -f $(code_search_logs_path)
+	rm -f $(code_search_results_file)
+
+code-search: $(code_search_results_file)
+$(code_search_results_file): clean-code-search $(go-codesearch) $(chroot_worker) $(srpms) $(BUILD_SRPMS_DIR)
+	@mkdir -p "$(code_search_build_dir)"
+	$(go-codesearch) \
+		--srpm-dir="$(BUILD_SRPMS_DIR)" \
+		--search-regex=$(SEARCH_REGEX)" \
+		--build-dir="$(code_search_build_dir)" \
+		--dist-tag=$(DIST_TAG) \
+		--worker-tar="$(chroot_worker)" \
+		--log-level=$(LOG_LEVEL) \
+		--log-file="$(code_search_logs_path)" \
+		--log-color="$(LOG_COLOR)" \
+		--search-result-file="$(code_search_results_file)" \
+		$(if $(SRPM_PACK_LIST),--spec-list=$(srpm_pack_list_file)) && \
+	echo "Code search completed successfully, results are in $(code_search_results_file)"

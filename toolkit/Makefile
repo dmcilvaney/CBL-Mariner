@@ -81,6 +81,7 @@ ENABLE_TRACE                    ?= n
 TOOLS_DIR        ?= $(toolkit_root)/tools
 TOOL_BINS_DIR    ?= $(toolkit_root)/out/tools
 PREVIEW_REPO     ?= $(toolkit_root)/repos/azurelinux-official-preview.repo
+PREVIEW_REPO_ALT ?= $(SPECS_DIR)/azurelinux-repos/azurelinux-official-preview.repo
 RESOURCES_DIR    ?= $(toolkit_root)/resources
 
 PROJECT_ROOT     ?= $(realpath $(toolkit_root)/..)
@@ -167,12 +168,14 @@ else
       override SRPM_URL_LIST      += https://packages.microsoft.com/azurelinux/$(RELEASE_MAJOR_ID)/preview/base/srpms
       ifneq ($(wildcard $(PREVIEW_REPO)),)
          override REPO_LIST += $(PREVIEW_REPO)
+      else ifneq ($(wildcard $(PREVIEW_REPO_ALT)),)
+         override REPO_LIST += $(PREVIEW_REPO_ALT)
       else
          $(warning )
          $(warning ######################### WARNING #########################)
-         $(warning 'USE_PREVIEW_REPO=y' set but '$(PREVIEW_REPO)' is missing. Regenerate toolkit's 'repos' directory. Remove 'USE_PREVIEW_REPO' for core builds.)
+         $(warning 'USE_PREVIEW_REPO=y' set but '$(PREVIEW_REPO)' and '$(PREVIEW_REPO_ALT)' are both missing. Regenerate toolkit's 'repos' directory.)
          $(warning ######################### WARNING #########################)
-         $(warning )
+         $(error )
       endif
    endif
 endif

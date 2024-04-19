@@ -352,6 +352,22 @@ func BuildRPMFromSRPM(srpmFile, outArch string, defines map[string]string) (err 
 	return shell.ExecuteLive(squashErrors, rpmBuildProgram, args...)
 }
 
+// PrepSourcesFromSPEC runs the '%prep' section of the given SPEC file but does not generate any RPM packages. The
+// sources must be prepared before running this.
+func PrepSourcesFromSPEC(srpmFile, outArch string, defines map[string]string) (err error) {
+	const squashErrors = true
+
+	commonBuildArgs, err := getCommonBuildArgs(outArch, srpmFile, defines)
+	if err != nil {
+		return
+	}
+
+	args := []string{"-bp"}
+	args = append(args, commonBuildArgs...)
+
+	return shell.ExecuteLive(squashErrors, rpmBuildProgram, args...)
+}
+
 // GenerateSRPMFromSPEC generates an SRPM for the given SPEC file
 func GenerateSRPMFromSPEC(specFile, topDir string, defines map[string]string) (err error) {
 	const (
@@ -383,12 +399,13 @@ func GenerateSRPMFromSPEC(specFile, topDir string, defines map[string]string) (e
 }
 
 // InstallRPM installs the given RPM or SRPM
-func InstallRPM(rpmFile string) (err error) {
+func InstallRPM(rpmFile, topDir string, defines map[string]string) (err error) {
 	const installOption = "-ihv"
 
 	logger.Log.Debugf("Installing RPM (%s)", rpmFile)
 
-	_, stderr, err := shell.Execute(rpmProgram, installOption, rpmFile)
+	args := formatCommandArgs([]string{installOption}, rpmFile, "", defines)
+	_, stderr, err := shell.Execute(rpmProgram, args...)
 	if err != nil {
 		err = fmt.Errorf("%v\n%w", stderr, err)
 	}

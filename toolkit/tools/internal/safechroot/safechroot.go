@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/buildpipeline"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/debugutils"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/file"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/retry"
@@ -656,13 +657,16 @@ func (c *Chroot) createMountPoints() (err error) {
 			mountPoint.source, fullPath, mountPoint.fstype, mountPoint.flags, mountPoint.data)
 
 		err = os.MkdirAll(fullPath, os.ModePerm)
+		logger.Log.Errorf("Failed to create directory (%s)", fullPath)
 		if err != nil {
 			return fmt.Errorf("failed to create directory (%s)", fullPath)
 		}
 
 		err = unix.Mount(mountPoint.source, fullPath, mountPoint.fstype, mountPoint.flags, mountPoint.data)
 		if err != nil {
+			debugutils.WaitForDebugger("before mount")
 			return fmt.Errorf("failed to mount (%s) to (%s):\n%w", mountPoint.source, fullPath, err)
+
 		}
 
 		mountPoint.isMounted = true

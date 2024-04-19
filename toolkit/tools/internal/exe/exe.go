@@ -46,6 +46,16 @@ func OutputDirFlag(k *kingpin.Application, doc string) *string {
 	return k.Flag("output-dir", doc).Required().String()
 }
 
+// PromptUserForString prints the userPrompt to the console, then reads a string back from the user.
+func PromptUserForString(userPrompt string) string {
+	fmt.Print(userPrompt)
+	var input string
+	fmt.Scanln(&input)
+	logger.Log.Debugf("User prompt: %s", userPrompt)
+	logger.Log.Debugf("User input: %s", input)
+	return input
+}
+
 func SetupLogFlags(k *kingpin.Application) *logger.LogFlags {
 	lf := &logger.LogFlags{}
 	lf.LogColor = k.Flag(logger.ColorFlag, logger.ColorFlagHelp).PlaceHolder(logger.ColorsPlaceholder).Enum(logger.Colors()...)
