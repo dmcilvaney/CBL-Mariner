@@ -300,11 +300,11 @@ func buildRPMFromSRPMInChroot(srpmFile, outArch string, runCheck bool, defines m
 	}
 
 	// Build the SRPM
-	if runCheck {
-		err = rpm.TestRPMFromSRPM(srpmFile, outArch, defines)
-	} else {
-		err = rpm.BuildRPMFromSRPM(srpmFile, outArch, defines)
-	}
+	// if runCheck {
+	// 	err = rpm.TestRPMFromSRPM(srpmFile, outArch, "", defines, true)
+	// } else {
+	// 	err = rpm.BuildRPMFromSRPM(srpmFile, outArch, "", nil, defines, true)
+	// }
 
 	return
 }

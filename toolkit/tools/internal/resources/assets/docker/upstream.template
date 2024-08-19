@@ -1,0 +1,8 @@
+[upstream]
+name=Upstream
+baseurl=file:///repos/upstream
+enabled=1
+gpgcheck=0
+skip_if_unavailable=True
+sslverify=0
+priority={{.num}}

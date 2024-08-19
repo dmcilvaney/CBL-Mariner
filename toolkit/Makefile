@@ -309,3 +309,19 @@ printvar-%: ; $(info $($(subst printvar-,,$@)))
 	@: # We want to supress 'make: Nothing to be done for ...' so execute a command so make thinks it has done something
 printvar-verbose-%: ; $(info $(subst printvar-verbose-,,$@): $($(subst printvar-verbose-,,$@)))
 	@: # We want to supress 'make: Nothing to be done for ...' so execute a command so make thinks it has done something
+
+.PHONY: newsched
+newsched_build_dir := $(BUILD_DIR)/newsched
+newsched_log       := $(LOGS_DIR)/newsched.log
+relative_paths     := $(shell realpath --relative-to=$(PROJECT_ROOT) $(wildcard $(SPECS_DIR)/**/*.spec))
+newsched: $(go-newsched_rpm) $(chroot_worker) $(specs_file)
+	mkdir -p $(newsched_build_dir)
+	$(go-newsched_rpm) \
+		$(foreach spec,$(wildcard $(SPECS_DIR)/**/*.spec),--specs="$(spec)") \
+		--spec-data=$(specs_file) \
+		--worker-tar="$(chroot_worker)" \
+		--repo-root="$(PROJECT_ROOT)" \
+		--build-dir="$(newsched_build_dir)" \
+		--dist-tag=$(DIST_TAG) \
+		--log-file=$(newsched_log) \
+		--log-level=$(LOG_LEVEL)

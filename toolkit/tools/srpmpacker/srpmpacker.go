@@ -728,11 +728,11 @@ func packSingleSPEC(ctx context.Context, specFile, srpmFile, signaturesFile, bui
 
 	err = updateSignaturesIfApplicable(signaturesFile, srcConfig, currentSignatures)
 
-	// Build the SRPM itself, using `workingDir` as the topdir
-	err = rpm.GenerateSRPMFromSPEC(specFile, workingDir, defines)
-	if err != nil {
-		return
-	}
+	// // Build the SRPM itself, using `workingDir` as the topdir
+	// _, err = rpm.GenerateSRPMFromSPEC(specFile, workingDir, "", defines)
+	// if err != nil {
+	// 	return
+	// }
 
 	// Save the output of the build to `outDir`
 	outputPath, err = copyOutput(workingDir, outDir)

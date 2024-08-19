@@ -44,6 +44,7 @@ go_tool_list = \
 	isomaker \
 	licensecheck \
 	liveinstaller \
+	newsched_rpm \
 	osmodifier \
 	pkgworker \
 	precacher \

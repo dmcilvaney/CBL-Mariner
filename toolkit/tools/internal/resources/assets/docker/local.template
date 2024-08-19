@@ -1,0 +1,8 @@
+[local-{{.num}}]
+name=Local
+baseurl=file:///repos/{{.num}}
+enabled=1
+gpgcheck=0
+skip_if_unavailable=True
+sslverify=0
+priority={{.num}}

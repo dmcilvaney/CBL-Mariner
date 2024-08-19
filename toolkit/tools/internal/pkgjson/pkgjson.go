@@ -271,6 +271,17 @@ func PackageStringToPackageVer(packageString string) (pkgVer *PackageVer, err er
 	}, err
 }
 
+func (pkgVer *PackageVer) PackageVerToPackageString() string {
+	parts := []string{pkgVer.Name}
+	if pkgVer.Condition != "" {
+		parts = append(parts, pkgVer.Condition)
+	}
+	if pkgVer.Version != "" {
+		parts = append(parts, pkgVer.Version)
+	}
+	return strings.Join(parts, " ")
+}
+
 // String outputs an interval in interval notation
 func (interval *PackageVerInterval) String() (s string) {
 	var (

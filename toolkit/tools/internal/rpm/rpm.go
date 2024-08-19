@@ -5,6 +5,7 @@ package rpm
 
 import (
 	"fmt"
+	"os"
 	"path/filepath"
 	"regexp"
 	"runtime"
@@ -14,8 +15,11 @@ import (
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/exe"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/file"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/pkgjson"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/shell"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/sliceutils"
+	"github.com/microsoft/azurelinux/toolkit/tools/tasker/buildconfig"
+	"github.com/microsoft/azurelinux/toolkit/tools/tasker/docker"
 )
 
 const (
@@ -30,6 +34,8 @@ const (
 
 	// QueryBuiltRPMHeadersArgument specifies that only rpm packages that would be built from a given spec should be queried.
 	QueryBuiltRPMHeadersArgument = "--builtrpms"
+
+	QueryProvidesHeadersArgument = "--provides"
 
 	// DistTagDefine specifies the dist tag option for rpm tool commands
 	DistTagDefine = "dist"
@@ -202,14 +208,19 @@ func ExtractNameFromRPMPath(rpmFilePath string) (packageName string, err error) 
 }
 
 // getCommonBuildArgs will generate arguments to pass to 'rpmbuild'.
-func getCommonBuildArgs(outArch, srpmFile string, defines map[string]string) (buildArgs []string, err error) {
+func getCommonBuildArgs(outArch, srpmFile, topDir string, defines map[string]string, noDeps bool) (buildArgs []string, err error) {
 	const (
 		os          = "linux"
 		queryFormat = ""
 		vendor      = "mariner"
 	)
 
-	buildArgs = []string{"--nodeps"}
+	var allDefines map[string]string
+
+	buildArgs = []string{}
+	if noDeps {
+		buildArgs = append(buildArgs, "--nodeps")
+	}
 
 	// buildArch is the arch of the build machine
 	// outArch is the arch of the machine that will run the resulting binary
@@ -224,7 +235,18 @@ func getCommonBuildArgs(outArch, srpmFile string, defines map[string]string) (bu
 		buildArgs = append(buildArgs, TargetArgument, tuple)
 	}
 
-	return formatCommandArgs(buildArgs, srpmFile, queryFormat, defines), nil
+	if topDir == "" {
+		allDefines = defines
+	} else {
+		allDefines = make(map[string]string)
+		for k, v := range defines {
+			allDefines[k] = v
+		}
+
+		allDefines[TopDirDefine] = topDir
+	}
+
+	return formatCommandArgs(buildArgs, srpmFile, queryFormat, allDefines), nil
 }
 
 // sanitizeOutput will take the raw output from an RPM command and split by new line,
@@ -358,6 +380,25 @@ func QuerySPECForBuiltRPMs(specFile, sourceDir, arch string, defines map[string]
 	return QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, QueryBuiltRPMHeadersArgument)
 }
 
+// QuerySPECForBuiltRPMs queries a SPEC file with queryFormat. Returns only the subpackages, which generate a .rpm file.
+func QuerySPECForBuiltRPMsWithArchPath(specFile, sourceDir, arch string, defines map[string]string) (result []string, err error) {
+	const queryFormat = "%{ARCH}/%{nevra}\n"
+
+	return QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, QueryBuiltRPMHeadersArgument)
+}
+
+// QuerySPECForProvides
+func QuerySPECForProvides(specFile, sourceDir, arch string, defines map[string]string) (result []string, err error) {
+	return QuerySPEC(specFile, sourceDir, "", arch, defines, QueryProvidesHeadersArgument)
+}
+
+// QuerySPECForSources
+func QuerySPECForSources(specFile, sourceDir, arch string, defines map[string]string) (result []string, err error) {
+	const queryFormat = "[%{SOURCE}\n][%{PATCH}\n]"
+
+	return QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, QueryHeaderArgument)
+}
+
 // QueryPackage queries an RPM or SRPM file with queryFormat. Returns the output split by line and trimmed.
 func QueryPackage(packageFile, queryFormat string, defines map[string]string, extraArgs ...string) (result []string, err error) {
 	const queryArg = "-q"
@@ -413,29 +454,69 @@ func QueryPackageFiles(packageFile string, defines map[string]string,
 }
 
 // BuildRPMFromSRPM builds an RPM from the given SRPM file but does not run its '%check' section.
-func BuildRPMFromSRPM(srpmFile, outArch string, defines map[string]string) (err error) {
+func BuildRPMFromSRPM(srpmFile, outArch string, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, noDeps bool, dirtLevel int) (err error) {
 	const squashErrors = true
 
-	commonBuildArgs, err := getCommonBuildArgs(outArch, srpmFile, defines)
+	commonBuildArgs, err := getCommonBuildArgs(outArch, srpmFile, topDir, defines, noDeps)
 	if err != nil {
 		return
+	}
+
+	var mount docker.DockerMount
+	if topDir != "" {
+		// Mount the topDir to the container
+		mount = docker.DockerMount{
+			Source: topDir,
+			Dest:   topDir,
+		}
 	}
 
 	args := []string{"--nocheck", "--rebuild"}
 	args = append(args, commonBuildArgs...)
 
-	return shell.ExecuteLive(squashErrors, rpmBuildProgram, args...)
+	overlays, err := docker.MountsForDirtLevel(dirtLevel)
+	if err != nil {
+		return
+	}
+	if buildconfig.CurrentBuildConfig.AllowCacheForAnyLevel {
+		overlays = append(overlays, docker.MountForUpstreamCache()...)
+	}
+
+	logFile, err := os.CreateTemp("", "build-rpm-from-srpm-*.log")
+	if err != nil {
+		return fmt.Errorf("error creating log file: %s", err)
+	}
+	defer logFile.Close()
+
+	//return shell.ExecuteLive(squashErrors, rpmBuildProgram, args...)
+	_, _, err = docker.Run(rpmBuildProgram, args, &mount, overlays, deps, docker.RpmImageTag, docker.CreateReposAndRun, logFile.Name(), true)
+	if err != nil {
+		logger.Log.Errorf("Failed to build, see log file: %s", logFile.Name())
+	}
+	return err
+}
+
+func GenerateNoSRPMFromSPEC(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, dirtLevel int) (resultPath string, err error) {
+	const (
+		generateSRPMArg = "-bs"
+	)
+	extraArgs := []string{generateSRPMArg, "--nodeps"}
+	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel)
 }
 
 // GenerateSRPMFromSPEC generates an SRPM for the given SPEC file
-func GenerateSRPMFromSPEC(specFile, topDir string, defines map[string]string) (err error) {
+func GenerateSRPMFromSPEC(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, dirtLevel int) (resultPath string, err error) {
 	const (
-		generateSRPMArg = "-bs"
-		queryFormat     = ""
+		generateSRPMArg = "-br"
 	)
-
-	var allDefines map[string]string
 	extraArgs := []string{generateSRPMArg}
+	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel)
+}
+
+func generateSrpmFromSpecCommon(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, extraArgs []string, dirtLevel int) (resultPath string, err error) {
+	const queryFormat = ""
+	var allDefines map[string]string
+	var mount docker.DockerMount
 
 	if topDir == "" {
 		allDefines = defines
@@ -446,15 +527,48 @@ func GenerateSRPMFromSPEC(specFile, topDir string, defines map[string]string) (e
 		}
 
 		allDefines[TopDirDefine] = topDir
+
+		// Mount the topDir to the container
+		mount = docker.DockerMount{
+			Source: topDir,
+			Dest:   topDir,
+		}
+	}
+
+	overlays, err := docker.MountsForDirtLevel(dirtLevel)
+	if err != nil {
+		return
+	}
+	if buildconfig.CurrentBuildConfig.AllowCacheForAnyLevel {
+		overlays = append(overlays, docker.MountForUpstreamCache()...)
 	}
 
 	args := formatCommandArgs(extraArgs, specFile, queryFormat, allDefines)
-	_, stderr, err := shell.Execute(rpmBuildProgram, args...)
+	//output, stderr, err := shell.Execute(rpmBuildProgram, args...)
+	output, stderr, err := docker.Run(rpmBuildProgram, args, &mount, overlays, deps, docker.SrpmImageTag, docker.CreateReposAndRun, "", true)
+
 	if err != nil {
 		err = fmt.Errorf("%v\n%w", stderr, err)
+		return
 	}
 
-	return
+	// Strip trailing newline
+	output = strings.TrimSpace(output)
+
+	// Split output into lines and extract the SRPM file path
+	outputLines := strings.Split(output, "\n")
+	lastLine := outputLines[len(outputLines)-1]
+
+	// Use a regex to extract the SRPM file path
+	// Should be of the form "Wrote: /path/to/srpm-file.src.rpm"
+	outputRegex := regexp.MustCompile(`Wrote: (.+\.src\.rpm)`)
+	matches := outputRegex.FindStringSubmatch(lastLine)
+	if len(matches) != 2 {
+		err = fmt.Errorf("failed to extract SRPM file path from output: %s", lastLine)
+		return
+	}
+
+	return matches[1], nil
 }
 
 // InstallRPM installs the given RPM or SRPM
@@ -466,6 +580,29 @@ func InstallRPM(rpmFile string) (err error) {
 	_, stderr, err := shell.Execute(rpmProgram, installOption, rpmFile)
 	if err != nil {
 		err = fmt.Errorf("%v\n%w", stderr, err)
+	}
+
+	return
+}
+
+func QueryRPMRequires2(rpmFile string) (requires []*pkgjson.PackageVer, err error) {
+	const queryRequiresOption = "-qpR"
+
+	logger.Log.Debugf("Querying RPM requires (%s)", rpmFile)
+	stdout, stderr, err := shell.Execute(rpmProgram, queryRequiresOption, rpmFile)
+	if err != nil {
+		err = fmt.Errorf("%v\n%w", stderr, err)
+		return
+	}
+
+	requiresStrings := sanitizeOutput(stdout)
+	requires = make([]*pkgjson.PackageVer, len(requiresStrings))
+	for i, requireString := range requiresStrings {
+		requires[i], err = pkgjson.PackageStringToPackageVer(requireString)
+		if err != nil {
+			err = fmt.Errorf("failed to parse package string (%s) to PackageVer:\n%w", requireString, err)
+			return
+		}
 	}
 
 	return
@@ -484,6 +621,31 @@ func QueryRPMProvides(rpmFile string) (provides []string, err error) {
 	}
 
 	provides = sanitizeOutput(stdout)
+	return
+}
+
+// QueryRPMProvides returns what an RPM file provides.
+// This includes any provides made by a generator and files provided by the rpm.
+func QueryRPMProvides2(rpmFile string) (provides []*pkgjson.PackageVer, err error) {
+	const queryProvidesOption = "-qlPp"
+
+	logger.Log.Debugf("Querying RPM provides (%s)", rpmFile)
+	stdout, stderr, err := shell.Execute(rpmProgram, queryProvidesOption, rpmFile)
+	if err != nil {
+		err = fmt.Errorf("%v\n%w", stderr, err)
+		return
+	}
+
+	providesStrings := sanitizeOutput(stdout)
+	provides = make([]*pkgjson.PackageVer, len(providesStrings))
+	for i, provideString := range providesStrings {
+		provides[i], err = pkgjson.PackageStringToPackageVer(provideString)
+		if err != nil {
+			err = fmt.Errorf("failed to parse package string (%s) to PackageVer:\n%w", provideString, err)
+			return
+		}
+	}
+
 	return
 }
 
@@ -623,10 +785,10 @@ func BuildCompatibleSpecsList(baseDir string, inputSpecPaths []string, defines m
 
 // TestRPMFromSRPM builds an RPM from the given SRPM and runs its '%check' section SRPM file
 // but it does not generate any RPM packages.
-func TestRPMFromSRPM(srpmFile, outArch string, defines map[string]string) (err error) {
+func TestRPMFromSRPM(srpmFile, outArch, topDir string, defines map[string]string, noDeps bool) (err error) {
 	const squashErrors = true
 
-	commonBuildArgs, err := getCommonBuildArgs(outArch, srpmFile, defines)
+	commonBuildArgs, err := getCommonBuildArgs(outArch, srpmFile, topDir, defines, noDeps)
 	if err != nil {
 		return
 	}
