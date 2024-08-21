@@ -441,6 +441,13 @@ func tdnfInstall(packages []string) (err error) {
 func removeLibArchivesFromSystem() (err error) {
 	dirsToExclude := []string{"/proc", "/dev", "/sys", "/run", "/ccache-dir"}
 
+	//DEBUG, dump some of the directories
+	logger.Log.Infof("Dumping toolchainrpms directories prior to removeLibArchivesFromSystem()")
+	shell.ExecuteLive(false, "ls", "-l", "/toolchainrpms")
+	shell.ExecuteLive(false, "ls", "-l", filepath.Join("/", "toolchainrpms", "x86_64"))
+	shell.ExecuteLive(false, "ls", "-l", filepath.Join("/", "toolchainrpms", "aarch64"))
+	shell.ExecuteLive(false, "ls", "-l", filepath.Join("/", "toolchainrpms", "noarch"))
+
 	err = filepath.Walk("/", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
 			return err

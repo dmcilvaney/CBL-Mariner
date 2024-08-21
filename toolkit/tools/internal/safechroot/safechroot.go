@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 	"time"
@@ -311,6 +312,31 @@ func (c *Chroot) Initialize(tarPath string, extraDirectories []string, extraMoun
 		// Mark this chroot as initialized, allowing it to be cleaned up on SIGTERM
 		// if requested.
 		activeChroots = append(activeChroots, c)
+	} else {
+		// DEBUG: Print out the contents of the mount points
+		for _, mountPoint := range extraMountPoints {
+			logger.Log.Warnf("Expecting %s -> %s mount to have been created externally", mountPoint.source, filepath.Join(c.rootDir, mountPoint.target))
+			// Print out the contents of the mount points
+			if mountPoint.source != "overlay" {
+				logger.Log.Warnf("SRC:")
+				shell.ExecuteLive(false, "ls", "-l", mountPoint.source)
+			} else {
+				// Look for lowerdir=... in the data
+				logger.Log.Warnf("DATA:%v", mountPoint.data)
+				if strings.Contains(mountPoint.data, "lowerdir=") {
+					lowerRegex := regexp.MustCompile(`lowerdir=([^,]+)`)
+					lowerDir := lowerRegex.FindString(mountPoint.data)
+					logger.Log.Warnf("LOWERDIR:")
+					shell.ExecuteLive(false, "ls", "-l", lowerDir)
+				}
+			}
+			logger.Log.Warnf("TARGET:")
+			shell.ExecuteLive(false, "ls", "-l", filepath.Join(c.rootDir, mountPoint.target))
+		}
+		// Extra debug for toolchainrpms
+		shell.ExecuteLive(false, "ls", "-l", filepath.Join(c.rootDir, "toolchainrpms", "x86_64"))
+		shell.ExecuteLive(false, "ls", "-l", filepath.Join(c.rootDir, "toolchainrpms", "aarch64"))
+		shell.ExecuteLive(false, "ls", "-l", filepath.Join(c.rootDir, "toolchainrpms", "noarch"))
 	}
 
 	return

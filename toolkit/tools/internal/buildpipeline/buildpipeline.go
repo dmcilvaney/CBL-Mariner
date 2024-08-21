@@ -217,6 +217,8 @@ func CleanupDockerChroot(chroot string) (err error) {
 		return err
 	}
 
+	//debugutils.WaitForUser("About to remove files in chroot")
+
 	for _, name := range names {
 		var toDelete = true
 		for _, folder := range folderToKeep {
@@ -226,12 +228,15 @@ func CleanupDockerChroot(chroot string) (err error) {
 			}
 		}
 		if toDelete {
+			logger.Log.Debugf("Remove %s", filepath.Join(chroot, name))
 			err = os.RemoveAll(filepath.Join(chroot, name))
 			if err != nil {
 				logger.Log.Warnf("Removing files in chroot %s failed: %s", chroot, err)
 			}
 		}
 	}
+
+	//debugutils.WaitForUser("Done removing files in chroot")
 
 	// create some folder(s) once chroot has been cleaned up
 	for _, folder := range folderToCreate {
@@ -240,6 +245,8 @@ func CleanupDockerChroot(chroot string) (err error) {
 			logger.Log.Warnf("Creation of %s folder in chroot %s failed: %s", folder, chroot, err)
 		}
 	}
+
+	//debugutils.WaitForUser("Done creating folders in chroot")
 
 	return
 }
