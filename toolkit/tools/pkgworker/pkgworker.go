@@ -450,6 +450,12 @@ func removeLibArchivesFromSystem() (err error) {
 
 	err = filepath.Walk("/", func(path string, info os.FileInfo, err error) error {
 		if err != nil {
+			// We can sometimes get readdirent no such file or directory errors, ignore them.
+			if os.IsNotExist(err) {
+				logger.Log.Errorf("UNEXPECTED: readdirent file not found, skipping...: %s", err)
+				return filepath.SkipDir
+			}
+
 			return err
 		}
 
