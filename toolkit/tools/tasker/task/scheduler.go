@@ -114,6 +114,12 @@ func (s *Scheduler) willAddNewCycle(parent, child Tasker) bool {
 	pNode := s.getTaskInternalNode(parent)
 	cNode := s.getTaskInternalNode(child)
 
+	// Check if self cycle
+	if pNode.ID() == cNode.ID() {
+		parent.TLog(logrus.InfoLevel, "Self cycle detected for %s", parent.ID())
+		return true
+	}
+
 	// Check for cycle if we added this edge
 	hadEdge := s.graph.HasEdgeFromTo(pNode.ID(), cNode.ID())
 	if hadEdge {

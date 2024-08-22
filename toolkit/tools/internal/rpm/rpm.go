@@ -6,9 +6,11 @@ package rpm
 import (
 	"fmt"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"regexp"
 	"runtime"
+	"sort"
 	"strconv"
 	"strings"
 
@@ -496,12 +498,20 @@ func BuildRPMFromSRPM(srpmFile, outArch string, topDir string, deps []*pkgjson.P
 	return err
 }
 
-func GenerateNoSRPMFromSPEC(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, dirtLevel int) (resultPath string, err error) {
+func GenerateNoSRPMFromSPEC(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, dirtLevel int, doDynamic bool) (resultPath string, err error) {
 	const (
-		generateSRPMArg = "-bs"
+		generateSRPMArg        = "-bs"
+		generateSRPMArgDynamic = "-br"
+		noDepsArg              = "--nodeps"
 	)
-	extraArgs := []string{generateSRPMArg, "--nodeps"}
-	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel)
+	extraArgs := []string{noDepsArg, "-vv"}
+	if doDynamic {
+		extraArgs = append(extraArgs, generateSRPMArgDynamic)
+	} else {
+		extraArgs = append(extraArgs, generateSRPMArg)
+	}
+	allowNoDepsError := doDynamic
+	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel, allowNoDepsError)
 }
 
 // GenerateSRPMFromSPEC generates an SRPM for the given SPEC file
@@ -509,11 +519,11 @@ func GenerateSRPMFromSPEC(specFile, topDir string, deps []*pkgjson.PackageVer, d
 	const (
 		generateSRPMArg = "-br"
 	)
-	extraArgs := []string{generateSRPMArg}
-	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel)
+	extraArgs := []string{generateSRPMArg, "-vv"}
+	return generateSrpmFromSpecCommon(specFile, topDir, deps, defines, extraArgs, dirtLevel, false)
 }
 
-func generateSrpmFromSpecCommon(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, extraArgs []string, dirtLevel int) (resultPath string, err error) {
+func generateSrpmFromSpecCommon(specFile, topDir string, deps []*pkgjson.PackageVer, defines map[string]string, extraArgs []string, dirtLevel int, allowNodepsError bool) (resultPath string, err error) {
 	const queryFormat = ""
 	var allDefines map[string]string
 	var mount docker.DockerMount
@@ -545,11 +555,27 @@ func generateSrpmFromSpecCommon(specFile, topDir string, deps []*pkgjson.Package
 
 	args := formatCommandArgs(extraArgs, specFile, queryFormat, allDefines)
 	//output, stderr, err := shell.Execute(rpmBuildProgram, args...)
-	output, stderr, err := docker.Run(rpmBuildProgram, args, &mount, overlays, deps, docker.SrpmImageTag, docker.CreateReposAndRun, "", true)
+
+	logFile, err := os.CreateTemp("", "build-rpm-from-srpm-*.log")
+	if err != nil {
+		return "", fmt.Errorf("error creating log file: %s", err)
+	}
+	defer logFile.Close()
+
+	output, stderr, err := docker.Run(rpmBuildProgram, args, &mount, overlays, deps, docker.SrpmImageTag, docker.CreateReposAndRun, logFile.Name(), true)
 
 	if err != nil {
-		err = fmt.Errorf("%v\n%w", stderr, err)
-		return
+		returnCode := 0
+		if exitErr, ok := err.(*exec.ExitError); ok {
+			returnCode = exitErr.ExitCode()
+		}
+		if returnCode == 11 && allowNodepsError {
+			logger.Log.Warnf("Ignoring error code 11 from rpm build, as it is expected when --nodeps is used")
+		} else {
+			logger.Log.Errorf("Failed to build, see log file: %s", logFile.Name())
+			err = fmt.Errorf("%v\n%w", stderr, err)
+			return
+		}
 	}
 
 	// Strip trailing newline
@@ -561,7 +587,7 @@ func generateSrpmFromSpecCommon(specFile, topDir string, deps []*pkgjson.Package
 
 	// Use a regex to extract the SRPM file path
 	// Should be of the form "Wrote: /path/to/srpm-file.src.rpm"
-	outputRegex := regexp.MustCompile(`Wrote: (.+\.src\.rpm)`)
+	outputRegex := regexp.MustCompile(`Wrote: (.+\.(?:src|nosrc)\.rpm)`)
 	matches := outputRegex.FindStringSubmatch(lastLine)
 	if len(matches) != 2 {
 		err = fmt.Errorf("failed to extract SRPM file path from output: %s", lastLine)
@@ -605,6 +631,10 @@ func QueryRPMRequires2(rpmFile string) (requires []*pkgjson.PackageVer, err erro
 		}
 	}
 
+	// Sort the requires to ensure consistent ordering
+	sort.Slice(requires, func(i, j int) bool {
+		return requires[i].Compare(requires[j]) < 0
+	})
 	return
 }
 

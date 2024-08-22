@@ -51,7 +51,7 @@ func (s *BuildSpecFileTask) Execute() {
 	s.TLog(logrus.InfoLevel, "Execute(): '%s'", s.ID())
 
 	s.srpmFile = s.AddDependency(
-		NewSrpmFileTask(s.specFile, false, s.DirtyLevel()),
+		NewSrpmFileTask(s.specFile, s.DirtyLevel()),
 	).(*SrpmFileTask).Value()
 
 	// Enqueue build dependencies
@@ -59,7 +59,12 @@ func (s *BuildSpecFileTask) Execute() {
 		if !strings.HasPrefix(dep.Name, "rpmlib") {
 			newDep := s.AddDependency(
 				NewRpmCapibilityTask(dep, s.DirtyLevel()),
-			).(*RpmCapibilityTask)
+			)
+			if newDep == nil {
+				newDep = s.AddDependency(
+					NewRpmCapibilityTask(dep, s.DirtyLevel()+1),
+				)
+			}
 			if newDep == nil {
 				s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: %s", dep)
 			}

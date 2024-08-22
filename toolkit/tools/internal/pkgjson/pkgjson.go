@@ -251,6 +251,18 @@ func (pkgVer *PackageVer) String() string {
 	return fmt.Sprintf("%s:C:'%s'V:'%s',C2:'%s'V2:'%s'", pkgVer.Name, pkgVer.Condition, pkgVer.Version, pkgVer.SCondition, pkgVer.SVersion)
 }
 
+func (pkg *PackageVer) Compare(other *PackageVer) (result int) {
+	if pkg.Name < other.Name {
+		return -1
+	}
+	if pkg.Name > other.Name {
+		return 1
+	}
+	intervalA, _ := pkg.Interval()
+	intervalB, _ := other.Interval()
+	return intervalA.Compare(&intervalB)
+}
+
 // PackageStringToPackageVer converts a package string into an instance of PackageVer.
 // The string may contain only the name of the package or also include a single package version constraint.
 // Examples:

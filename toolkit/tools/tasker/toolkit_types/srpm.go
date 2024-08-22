@@ -12,7 +12,6 @@ import (
 type SrpmFile struct {
 	// Inputs
 	SourceSpec *SpecFile
-	NoDeps     bool
 	Sources    []*SourceFile
 
 	// Derived
@@ -21,11 +20,10 @@ type SrpmFile struct {
 	BuildRequires     []*pkgjson.PackageVer
 }
 
-func NewSrpmFile(sourceSpec *SpecFile, noDeps bool) *SrpmFile {
+func NewSrpmFile(sourceSpec *SpecFile) *SrpmFile {
 	sources := make([]*SourceFile, len(sourceSpec.Sources))
 	return &SrpmFile{
 		SourceSpec: sourceSpec,
-		NoDeps:     noDeps,
 		Sources:    sources,
 	}
 }

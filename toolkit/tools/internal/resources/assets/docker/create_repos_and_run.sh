@@ -56,8 +56,11 @@ esac
 done
 
 # Treat every other argument as a command + args to run
+# We no longer want to abort on error, as we want to change ownership of files back to the user no matter what, and just return the exit code of the command
+set +e
 command "$@"
 ret=$?
+set -e
 
 # Change ownership of files back to the user
 if [ -n "$user" ] && [ -n "$path_to_fix" ]; then

@@ -66,7 +66,8 @@ go_grapher_files = $(shell find $(TOOLS_DIR)/grapher/ -type f -name '*.go')
 go_pkg_files = $(shell find $(TOOLS_DIR)/pkg/ -type f -name '*.go')
 go_imagegen_files = $(shell find $(TOOLS_DIR)/imagegen/ -type f -name '*.go')
 go_scheduler_files = $(shell find $(TOOLS_DIR)/scheduler -type f -name '*.go')
-go_common_files = $(go_module_files) $(go_internal_files) $(go_grapher_files) $(go_imagegen_files) $(go_pkg_files) $(go_scheduler_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag $(BUILD_DIR)/tools/internal.test_coverage
+go_scheduler2_files = $(shell find $(TOOLS_DIR)/tasker -type f -name '*.go')
+go_common_files = $(go_module_files) $(go_internal_files) $(go_grapher_files) $(go_imagegen_files) $(go_pkg_files) $(go_scheduler_files) $(go_scheduler2_files) $(STATUS_FLAGS_DIR)/got_go_deps.flag $(BUILD_DIR)/tools/internal.test_coverage
 # A report on test coverage for all the go tools
 test_coverage_report=$(TOOL_BINS_DIR)/test_coverage_report.html
 

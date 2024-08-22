@@ -1,0 +1,102 @@
+strict digraph scheduler {
+// Node definitions.
+graph_root_node [label=graph_root_node];
+"0BUILDSPEC" [
+label="|0|BUILDSPEC"
+fillcolor=slateblue
+style=filled
+];
+"1BUILDSPEC" [
+label="|1|BUILDSPEC"
+fillcolor=skyblue
+style=filled
+];
+"2BUILDSPEC" [
+label="|2|BUILDSPEC"
+fillcolor=slategray1
+style=filled
+];
+"3BUILDSPEC" [
+label="|3|BUILDSPEC"
+fillcolor=slateblue
+style=filled
+];
+"0BUILDSRPM" [
+label="|0|BUILDSRPM"
+fillcolor=darkseagreen3
+style=filled
+];
+"1BUILDSRPM" [
+label="|1|BUILDSRPM"
+fillcolor=darkolivegreen1
+style=filled
+];
+"2BUILDSRPM" [
+label="|2|BUILDSRPM"
+fillcolor=darkseagreen1
+style=filled
+];
+"3BUILDSRPM" [
+label="|3|BUILDSRPM"
+fillcolor=darkseagreen3
+style=filled
+];
+"0CACHE" [
+label="|0|CACHE"
+fillcolor=darkred
+style=filled
+];
+"1CACHE" [
+label="|1|CACHE"
+fillcolor=firebrick3
+style=filled
+];
+"2CACHE" [
+label="|2|CACHE"
+fillcolor=firebrick1
+style=filled
+];
+"3CACHE" [
+label="|3|CACHE"
+fillcolor=darkred
+style=filled
+];
+"0CAP" [
+label="|0|CAP"
+fillcolor=darkgoldenrod3
+style=filled
+];
+"1CAP" [
+label="|1|CAP"
+fillcolor=darkgoldenrod2
+style=filled
+];
+"2CAP" [
+label="|2|CAP"
+fillcolor=darkgoldenrod1
+style=filled
+];
+"3CAP" [
+label="|3|CAP"
+fillcolor=darkgoldenrod3
+style=filled
+];
+
+// Edge definitions.
+graph_root_node -> "0BUILDSPEC";
+graph_root_node -> "0BUILDSRPM";
+graph_root_node -> "0CACHE";
+graph_root_node -> "0CAP";
+"0BUILDSPEC" -> "1BUILDSPEC";
+"1BUILDSPEC" -> "2BUILDSPEC";
+"2BUILDSPEC" -> "3BUILDSPEC";
+"0BUILDSRPM" -> "1BUILDSRPM";
+"1BUILDSRPM" -> "2BUILDSRPM";
+"2BUILDSRPM" -> "3BUILDSRPM";
+"0CACHE" -> "1CACHE";
+"1CACHE" -> "2CACHE";
+"2CACHE" -> "3CACHE";
+"0CAP" -> "1CAP";
+"1CAP" -> "2CAP";
+"2CAP" -> "3CAP";
+}

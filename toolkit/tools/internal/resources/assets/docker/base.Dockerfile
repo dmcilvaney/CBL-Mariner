@@ -8,7 +8,7 @@ RUN tdnf install -y createrepo_c
 RUN tdnf install -y dnf-utils
 
 # Refresh the cache (use date to force a cache refresh each hour)
-RUN dnf makecache -y --enablerepo=* && echo "Cache refreshed at $(date +'%Y-%m-%d %H')"
+RUN dnf makecache -y --enablerepo=* && echo "Hello world"
 
 # Copy in create_repos_and_run.sh and place on path
 COPY [ "./create_repos_and_run.sh", \

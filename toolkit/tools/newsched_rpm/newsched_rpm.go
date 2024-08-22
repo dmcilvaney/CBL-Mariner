@@ -18,6 +18,7 @@ import (
 	newschedulertasks "github.com/microsoft/azurelinux/toolkit/tools/tasker/buildtasks"
 	"github.com/microsoft/azurelinux/toolkit/tools/tasker/task"
 	"github.com/microsoft/azurelinux/toolkit/tools/tasker/toolkit_types"
+	"github.com/sirupsen/logrus"
 	"gopkg.in/alecthomas/kingpin.v2"
 )
 
@@ -57,7 +58,7 @@ func main() {
 		RpmsCacheDir:          filepath.Join(*buildDirPath, "RPMS-cache"),
 		InputRepoDir:          *fakePmcDir,
 		DoCheck:               false,
-		MaxDirt:               3,
+		MaxDirt:               2,
 		AllowCacheForAnyLevel: true,
 	}
 	buildConfig.RpmsDirsByDirtLevel[0] = filepath.Join(*buildDirPath, "RPMS")
@@ -71,10 +72,21 @@ func main() {
 	// TODO: This is a hack to get the spec data into the specs package quickly
 	toolkit_types.NewSpecDataDB(*specData)
 
-	s := task.NewScheduler(true)
+	s := task.NewScheduler(false)
+
+	// Dump the graph to a file on exit
+	logrus.RegisterExitHandler(func() {
+		graphFilePath := filepath.Join(*buildDirPath, "graph.dot")
+		graphFile, err := os.Create(graphFilePath)
+		if err != nil {
+			logger.Log.Fatalf("Failed to open graph file: %s", err)
+		}
+		defer graphFile.Close()
+		s.WriteDOTGraph(graphFile)
+		logger.Log.Infof("Wrote graph to %s", graphFilePath)
+	})
 
 	goals := []*newschedulertasks.BuildSpecFileTask{}
-	//for _, specPath := range *specPaths {
 	spec := s.AddTask(
 		nil,
 		newschedulertasks.NewBuildSpecFileTask(
@@ -92,13 +104,5 @@ func main() {
 			logger.Log.Warnf("  RPM: %s", rpm.Path)
 		}
 	}
-
-	graphFilePath := filepath.Join(*buildDirPath, "graph.dot")
-	graphFile, err := os.Create(graphFilePath)
-	if err != nil {
-		logger.Log.Fatalf("Failed to open graph file: %s", err)
-	}
-	defer graphFile.Close()
-	s.WriteDOTGraph(graphFile)
-	logger.Log.Infof("Wrote graph to %s", graphFilePath)
+	logrus.Exit(0)
 }

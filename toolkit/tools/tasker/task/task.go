@@ -174,9 +174,10 @@ func (b *BasicTask) TLog(level logrus.Level, format string, args ...interface{})
 	for i := 0; i < b.depth; i++ {
 		indent += "    "
 	}
-	logger.Log.Logf(level, d+indent+format, args...)
 	if level == logrus.FatalLevel {
-		panic(fmt.Sprintf(format, args...))
+		logger.Log.Fatalf(d+indent+format, args...)
+	} else {
+		logger.Log.Logf(level, d+indent+format, args...)
 	}
 }
 

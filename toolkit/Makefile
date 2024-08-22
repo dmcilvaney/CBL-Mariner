@@ -321,6 +321,7 @@ newsched: $(go-newsched_rpm) $(chroot_worker) $(specs_file)
 		--spec-data=$(specs_file) \
 		--worker-tar="$(chroot_worker)" \
 		--repo-root="$(PROJECT_ROOT)" \
+		--fake-pmc-dir="$(PROJECT_ROOT)/fake_pmc" \
 		--build-dir="$(newsched_build_dir)" \
 		--dist-tag=$(DIST_TAG) \
 		--log-file=$(newsched_log) \
