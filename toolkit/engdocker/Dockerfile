@@ -29,3 +29,5 @@ RUN tdnf -y install wget
 RUN tdnf -y install xfsprogs
 RUN tdnf -y install zstd
 RUN tdnf -y install ca-certificates
+RUN tdnf -y install tmux
+RUN tdnf -y install procps-ng

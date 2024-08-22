@@ -8,7 +8,7 @@ sudo rm -rf $workdir
 
 chroot_dir=/temp/DockerStage/
 basedir=$chroot_dir/docker-chroot-
-repo_dir=/home/mariner_user/CBL-Mariner
+repo_dir=$script_dir/../
 
 mounts=()
 mounts+=(-v $workdir:/tmp/mariner)
@@ -36,7 +36,15 @@ docker build $script_dir/engdocker -t mcr.microsoft.com/azurelinux/local/buildco
 docker run  --privileged -it --rm -v $repo_dir:/repo "${mounts[@]}" mcr.microsoft.com/azurelinux/local/buildcontainer:latest bash -c "\
     git config --global --add safe.directory /repo && \
     touch $chroot_dir/chroot-pool.lock && \
-    bash --rcfile <(echo 'cd /repo/toolkit') \
+    tmux \; new-session -c /repo/toolkit \; split-window -h -d -c /temp/DockerStage/ watch -n 0.5 ls -la /temp/DockerStage/docker-chroot-1/toolchainrpms/ \
 "
 
-#sudo make build-packages SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ build-packages LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j10
+#    sudo make build-packages SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j10
+#    sudo make rpms-snapshot SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j10
+#    sudo make go-tools SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j1
+#    sudo make toolchain SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j1
+
+#    sudo make printvar-SPECS_DIR SPECS_DIR=../SPECS_TEST DAILY_BUILD_ID=lkg REBUILD_TOOLS=y CHROOT_DIR=/temp/DockerStage/ LOG_LEVEL=debug BUILD_DIR=/tmp/mariner/build OUT_DIR=/tmp/mariner/out -j1
+
+#    echo "hi" > /temp/DockerStage/docker-chroot-1/toolchainrpms/aarch64/hi.txt
+#    ls -la /temp/DockerStage/docker-chroot-1/toolchainrpms/
