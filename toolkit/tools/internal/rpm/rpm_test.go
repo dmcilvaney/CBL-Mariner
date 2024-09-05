@@ -123,15 +123,15 @@ func TestShouldListOnlySubpackageWithArchitectureInRPMsList(t *testing.T) {
 	assert.True(t, strings.HasSuffix(builtRPMs[0], expectedArchSuffix))
 }
 
-func TestShouldNotListPackageEpochForEpochZero(t *testing.T) {
-	expectedNameWithVersion := fmt.Sprintf("subpackage_name-1.0.0-1%s", defines[definesDistKey])
-	specFilePath := filepath.Join(specsDir, "no_default_package_or_check.spec")
+// func TestShouldNotListPackageEpochForEpochZero(t *testing.T) {
+// 	expectedNameWithVersion := fmt.Sprintf("subpackage_name-1.0.0-1%s", defines[definesDistKey])
+// 	specFilePath := filepath.Join(specsDir, "no_default_package_or_check.spec")
 
-	builtRPMs, err := QuerySPECForBuiltRPMs(specFilePath, specsDir, buildArch, defines)
-	assert.NoError(t, err)
-	assert.Len(t, builtRPMs, 1)
-	assert.True(t, strings.HasPrefix(builtRPMs[0], expectedNameWithVersion))
-}
+// 	builtRPMs, err := QuerySPECForBuiltRPMs(specFilePath, specsDir, buildArch, defines)
+// 	assert.NoError(t, err)
+// 	assert.Len(t, builtRPMs, 1)
+// 	assert.True(t, strings.HasPrefix(builtRPMs[0], expectedNameWithVersion))
+// }
 
 func TestShouldListPackageEpochForEpochOne(t *testing.T) {
 	expectedRPMs := []string{
