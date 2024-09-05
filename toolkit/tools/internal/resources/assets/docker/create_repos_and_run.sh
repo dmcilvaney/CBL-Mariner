@@ -23,16 +23,17 @@ case $i in
         fi
         shift
         ;;
-    --upstream-repo=*)
+    --upstream-repo-priority=*)
         priority="${i#*=}"
         echo "Adding upstream repo" >&3 2>&3
         sed -e "s|{{.num}}|$priority|g" "$upstream_template_file" > "/etc/yum.repos.d/upstream.repo"
+        createrepo --compatibility /repos/upstream/ >&3 2>&3
         shift
         ;;
     #--install-dep='pkg = version'
     --install-dep=*)
         dep="${i#*=}"
-        dnf install -y -q "$dep" >&3 2>&3
+        dnf install -y --enablerepo='*' "$dep" >&3 2>&3
         shift
         ;;
     # --user='id:guid' --path='path'

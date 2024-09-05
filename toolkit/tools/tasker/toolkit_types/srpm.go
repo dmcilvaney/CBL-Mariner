@@ -17,13 +17,12 @@ type SrpmFile struct {
 	// Derived
 	Path              string
 	PredictedProvides []*pkgjson.PackageVer
-	BuildRequires     []*pkgjson.PackageVer
+	Requires          []*pkgjson.PackageVer
 }
 
 func NewSrpmFile(sourceSpec *SpecFile) *SrpmFile {
-	sources := make([]*SourceFile, len(sourceSpec.Sources))
 	return &SrpmFile{
 		SourceSpec: sourceSpec,
-		Sources:    sources,
+		Sources:    sourceSpec.Sources,
 	}
 }

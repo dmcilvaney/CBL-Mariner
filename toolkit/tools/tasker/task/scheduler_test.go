@@ -25,7 +25,7 @@ func CreateTasks(s *Scheduler, name string, num int) {
 	for i := 0; i < num; i++ {
 		task := &BasicTask{}
 		task.SetInfo(strconv.Itoa(i)+name, name, i)
-		s.AddTask(prevTask, task)
+		s.AddTask(prevTask, task, NoSelfCycle)
 		prevTask = task
 	}
 }
@@ -40,7 +40,7 @@ func TestWriteDOTGraph(t *testing.T) {
 	fHandle, err := os.Create(tempFile)
 	assert.NoError(t, err)
 	defer fHandle.Close()
-	err = scheduler.WriteDOTGraph(fHandle)
+	err = scheduler.WriteDOTGraph(fHandle, nil)
 	assert.NoError(t, err)
 }
 

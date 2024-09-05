@@ -6,11 +6,13 @@
 package newschedulertasks
 
 import (
+	"context"
 	"fmt"
 	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/directory"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/file"
@@ -52,17 +54,40 @@ func (s *BuildSpecFileTask) Execute() {
 
 	s.srpmFile = s.AddDependency(
 		NewSrpmFileTask(s.specFile, s.DirtyLevel()),
+		task.NoSelfCycle,
 	).(*SrpmFileTask).Value()
 
+	// We always assume we want a copy of the toolchain
+	toolchainDep := &pkgjson.PackageVer{Name: "azl-toolchain"}
+	toolchain := s.AddDependency(
+		NewRpmCapibilityTask(
+			toolchainDep,
+			s.DirtyLevel(),
+		),
+		task.NoSelfCycle,
+	)
+	if toolchain == nil {
+		toolchain = s.AddDependency(
+			NewRpmCapibilityTask(
+				toolchainDep,
+				s.DirtyLevel()+1,
+			),
+			task.NoSelfCycle,
+		)
+	}
+	if toolchain == nil {
+		s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+	}
+
 	// Enqueue build dependencies
-	for _, dep := range s.srpmFile.BuildRequires {
+	for _, dep := range s.srpmFile.Requires {
 		if !strings.HasPrefix(dep.Name, "rpmlib") {
 			newDep := s.AddDependency(
-				NewRpmCapibilityTask(dep, s.DirtyLevel()),
+				NewRpmCapibilityTask(dep, s.DirtyLevel()), task.NoSelfCycle,
 			)
 			if newDep == nil {
 				newDep = s.AddDependency(
-					NewRpmCapibilityTask(dep, s.DirtyLevel()+1),
+					NewRpmCapibilityTask(dep, s.DirtyLevel()+1), task.NoSelfCycle,
 				)
 			}
 			if newDep == nil {
@@ -78,13 +103,16 @@ func (s *BuildSpecFileTask) Execute() {
 	s.WaitForDeps()
 
 	// Build the package
-	s.buildSpecFile(s.specFile, s.srpmFile.BuildRequires, buildconfig.CurrentBuildConfig)
+	s.buildSpecFile(s.specFile, append(s.srpmFile.Requires, toolchainDep), buildconfig.CurrentBuildConfig)
 
 	s.SetValue(*s.specFile)
 	s.SetDone()
 }
 
 func (s *BuildSpecFileTask) buildSpecFile(specFile *toolkit_types.SpecFile, deps []*pkgjson.PackageVer, buildConfig buildconfig.BuildConfig) {
+	s.ClaimLimit(5)
+	defer s.ReleaseLimit()
+
 	workDir := s.GetWorkDir()
 	defer os.RemoveAll(workDir)
 	topDir := filepath.Join(workDir, "topdir")
@@ -104,6 +132,23 @@ func (s *BuildSpecFileTask) buildSpecFile(specFile *toolkit_types.SpecFile, deps
 	if s.DirtyLevel() > 0 {
 		macros["dist"] = fmt.Sprintf("%s.dirty_%d", macros["dist"], s.DirtyLevel())
 	}
+
+	// Monitor the build for the user
+	loggingCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	go func() {
+		startTime := time.Now()
+		for {
+			mins := time.Since(startTime).Truncate(time.Minute).Minutes()
+			s.TLog(logrus.InfoLevel, "Building for %.0f minutes", mins)
+			select {
+			case <-loggingCtx.Done():
+				return
+			case <-time.After(1 * time.Minute):
+				continue
+			}
+		}
+	}()
 
 	err = rpm.BuildRPMFromSRPM(tempSrpmPath, buildConfig.Arch, topDir, deps, macros, false, s.DirtyLevel()+1)
 	if err != nil {

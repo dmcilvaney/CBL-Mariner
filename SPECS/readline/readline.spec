@@ -30,7 +30,8 @@ sed -i '/{OLDSUFF}/c:' support/shlib-install
 %build
 ./configure \
     --prefix=%{_prefix} \
-    --disable-silent-rules
+    --disable-silent-rules \
+    --with-curses
 make SHLIB_LIBS=-lncursesw
 
 %install

@@ -20,7 +20,7 @@ type SpecFile struct {
 	Path              string
 	ProvidedRpms      []*RpmFile
 	PredictedProvides []*pkgjson.PackageVer
-	Sources           []string
+	Sources           []*SourceFile
 }
 
 func NewSpecFile(path string, dirtLevel int, buildConfig buildconfig.BuildConfig) *SpecFile {
@@ -41,17 +41,25 @@ func NewSpecFile(path string, dirtLevel int, buildConfig buildconfig.BuildConfig
 	}
 	sort.Strings(predictedProvides)
 
-	sources, err := rpm.QuerySPECForSources(path, filepath.Dir(path), arch, rpm.DefaultDistroDefines(doCheck, distTag))
+	sources, patches, err := rpm.QuerySPECForSources(path, filepath.Dir(path), arch, rpm.DefaultDistroDefines(doCheck, distTag))
 	if err != nil {
 		logger.Log.Fatalf("Failed to query spec file %s: %s", path, err)
 	}
 	sort.Strings(sources)
+	sort.Strings(patches)
 
 	newSpec := &SpecFile{
 		Path:         path,
 		ProvidedRpms: nil,
-		Sources:      sources,
+		Sources:      []*SourceFile{},
 	}
+	for _, source := range sources {
+		newSpec.Sources = append(newSpec.Sources, NewSourceFile(source, SourceFileTypeSource))
+	}
+	for _, patch := range patches {
+		newSpec.Sources = append(newSpec.Sources, NewSourceFile(patch, SourceFileTypePatch))
+	}
+
 	for _, rpm := range builtRpms {
 		newSpec.ProvidedRpms = append(newSpec.ProvidedRpms, NewRpmFile(filepath.Join(rpmsDir, rpm)+".rpm"))
 	}

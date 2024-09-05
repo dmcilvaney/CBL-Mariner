@@ -61,9 +61,15 @@ func TestNewSpecFile(t *testing.T) {
 						Condition: "=",
 					},
 				},
-				Sources: []string{
-					"test.patch",
-					"test.txt",
+				Sources: []*toolkit_types.SourceFile{
+					{
+						Path: "test.txt",
+						Type: toolkit_types.SourceFileTypeSource,
+					},
+					{
+						Path: "test.patch",
+						Type: toolkit_types.SourceFileTypePatch,
+					},
 				},
 			},
 		},
@@ -73,7 +79,8 @@ func TestNewSpecFile(t *testing.T) {
 			// if got := NewSpecFile(tt.args.path, defaultBuildConfig); !reflect.DeepEqual(got, tt.want) {
 			// 	t.Errorf("NewSpecFile() = %v, want %v", got, tt.want)
 			// }
-			assert.Equal(t, toolkit_types.NewSpecFile(tt.args.path, 0, defaultBuildConfig), tt.want)
+			got := toolkit_types.NewSpecFile(tt.args.path, 0, defaultBuildConfig)
+			assert.Equal(t, got, tt.want)
 		})
 	}
 }

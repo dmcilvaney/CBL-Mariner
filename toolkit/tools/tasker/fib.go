@@ -43,10 +43,10 @@ func (t *FibonacciTask) Execute() {
 		if t.n1Task == nil || t.n2Task == nil {
 			n1Task := t.AddDependency(&FibonacciTask{
 				n: t.n - 1,
-			})
+			}, task.NoSelfCycle)
 			n2Task := t.AddDependency(&FibonacciTask{
 				n: t.n - 2,
-			})
+			}, task.NoSelfCycle)
 			var ok bool
 			t.n1Task, ok = n1Task.(task.ValueTask[int])
 			if !ok {

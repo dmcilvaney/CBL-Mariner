@@ -10,10 +10,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/directory"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/exe"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/pkgjson"
 	"github.com/microsoft/azurelinux/toolkit/tools/tasker/buildconfig"
 	newschedulertasks "github.com/microsoft/azurelinux/toolkit/tools/tasker/buildtasks"
 	"github.com/microsoft/azurelinux/toolkit/tools/tasker/task"
@@ -33,6 +35,8 @@ var (
 	repoRootDir  = app.Flag("repo-root", "Root directory of the repository.").Required().ExistingDir()
 	workerTar    = app.Flag("worker-tar", "Full path to worker_chroot.tar.gz.").Required().ExistingFile()
 
+	sourceUrl = app.Flag("source-url", "The source URL.").Required().String()
+
 	distTag = app.Flag("dist-tag", "The distribution tag.").Required().String()
 
 	logFlags = exe.SetupLogFlags(app)
@@ -43,7 +47,7 @@ func main() {
 	kingpin.MustParse(app.Parse(os.Args[1:]))
 	logger.InitBestEffort(logFlags)
 
-	task.InitializeLimiter(context.TODO(), 1)
+	task.InitializeLimiter(context.TODO(), 50)
 
 	err := directory.EnsureDirExists(*buildDirPath)
 	if err != nil {
@@ -59,7 +63,9 @@ func main() {
 		InputRepoDir:          *fakePmcDir,
 		DoCheck:               false,
 		MaxDirt:               2,
-		AllowCacheForAnyLevel: true,
+		AllowCacheForAnyLevel: false,
+		SourceUrl:             *sourceUrl,
+		TempDir:               filepath.Join(os.TempDir(), "azl-toolkit"),
 	}
 	buildConfig.RpmsDirsByDirtLevel[0] = filepath.Join(*buildDirPath, "RPMS")
 	buildConfig.SrpmsDirsByDirtLevel[0] = filepath.Join(*buildDirPath, "SRPMS")
@@ -69,40 +75,97 @@ func main() {
 	}
 	buildconfig.CurrentBuildConfig = buildConfig
 
+	err = directory.EnsureDirExists(buildconfig.CurrentBuildConfig.TempDir)
+	if err != nil {
+		logger.Log.Fatalf("Failed to create temp directory: %s", err)
+	}
+
 	// TODO: This is a hack to get the spec data into the specs package quickly
 	toolkit_types.NewSpecDataDB(*specData)
 
 	s := task.NewScheduler(false)
+	s.StartProgressPrinter()
 
-	// Dump the graph to a file on exit
-	logrus.RegisterExitHandler(func() {
-		graphFilePath := filepath.Join(*buildDirPath, "graph.dot")
-		graphFile, err := os.Create(graphFilePath)
-		if err != nil {
-			logger.Log.Fatalf("Failed to open graph file: %s", err)
-		}
-		defer graphFile.Close()
-		s.WriteDOTGraph(graphFile)
-		logger.Log.Infof("Wrote graph to %s", graphFilePath)
-	})
+	cancel := configureGraphDebug(s)
+	defer cancel()
 
-	goals := []*newschedulertasks.BuildSpecFileTask{}
-	spec := s.AddTask(
+	goals := []task.Tasker{}
+	// spec := s.AddTask(
+	// 	nil,
+	// 	newschedulertasks.NewBuildSpecFileTask(
+	// 		(*specPaths)[0],
+	// 		0,
+	// 		buildconfig.CurrentBuildConfig,
+	// 	)).(*newschedulertasks.BuildSpecFileTask)
+	// goals = append(goals, spec)
+	cap := s.AddTask(
 		nil,
-		newschedulertasks.NewBuildSpecFileTask(
-			(*specPaths)[0],
+		newschedulertasks.NewRpmCapibilityTask(
+			&pkgjson.PackageVer{
+				Name: "azl-toolchain",
+			},
 			0,
-			buildconfig.CurrentBuildConfig,
-		)).(*newschedulertasks.BuildSpecFileTask)
-	goals = append(goals, spec)
-	//}
+		), task.NoSelfCycle)
+	goals = append(goals, cap)
 
 	for _, goal := range goals {
-		finalSpec := goal.Value()
-		logger.Log.Warnf("Spec: %s DONE!", finalSpec.Path)
-		for _, rpm := range finalSpec.ProvidedRpms {
-			logger.Log.Warnf("  RPM: %s", rpm.Path)
-		}
+		// finalSpec := goal.Value()
+		// logger.Log.Warnf("Spec: %s DONE!", finalSpec.Path)
+		// for _, rpm := range finalSpec.ProvidedRpms {
+		// 	logger.Log.Warnf("  RPM: %s", rpm.Path)
+		// }
+		finalCap := goal.(*newschedulertasks.RpmCapibilityTask).Value()
+		logger.Log.Warnf("Cap: %s DONE!", finalCap.MappedPackage.Path)
 	}
 	logrus.Exit(0)
+}
+
+func configureGraphDebug(s *task.Scheduler) (cancel context.CancelFunc) {
+	graphFileFullPath := filepath.Join(*buildDirPath, "graph_full.dot")
+	graphFileCleanPath := filepath.Join(*buildDirPath, "graph.dot")
+
+	// Dump the graph to a file on any exit
+	logrus.RegisterExitHandler(func() {
+		writeGraphs(s, graphFileFullPath, graphFileCleanPath)
+		logger.Log.Infof("Wrote graph to %s", graphFileFullPath)
+		logger.Log.Infof("Wrote clean graph to %s", graphFileCleanPath)
+	})
+
+	// Periodically dump the graph to a file
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		// Do a write immediately, incrementing the deltay time by 1 second up to a max of
+		// 5 minutes
+		writeGraphs(s, graphFileFullPath, graphFileCleanPath)
+		delayTime := 10 * time.Second
+		for {
+			writeGraphs(s, graphFileFullPath, graphFileCleanPath)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(delayTime):
+				if delayTime < 5*time.Minute {
+					delayTime += 1 * time.Second
+				}
+				continue
+			}
+		}
+	}()
+	return cancel
+}
+
+func writeGraphs(s *task.Scheduler, graphFileFullPath, graphFileCleanPath string) {
+	graphFileFull, err := os.Create(graphFileFullPath)
+	if err != nil {
+		logger.Log.Fatalf("Failed to open graph file: %s", err)
+	}
+	defer graphFileFull.Close()
+
+	graphFileClean, err := os.Create(graphFileCleanPath)
+	if err != nil {
+		logger.Log.Fatalf("Failed to open graph file: %s", err)
+	}
+	defer graphFileClean.Close()
+
+	s.WriteDOTGraph(graphFileFull, graphFileClean)
 }

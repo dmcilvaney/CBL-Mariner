@@ -9,7 +9,10 @@ import (
 	"io"
 	"strings"
 	"sync"
+	"time"
 
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
+	"github.com/microsoft/azurelinux/toolkit/tools/tasker/buildconfig"
 	"github.com/sirupsen/logrus"
 	"gonum.org/v1/gonum/graph"
 	"gonum.org/v1/gonum/graph/encoding"
@@ -30,6 +33,11 @@ type SchedNode struct {
 func (n SchedNode) DOTID() string {
 	return n.taskRef.ID()
 }
+
+const (
+	NoSelfCycle    = false
+	AllowSelfCycle = true
+)
 
 // pick a color based on the task's ID. Need to use regex to match the task ID.
 // TODO: make this not suck
@@ -52,6 +60,14 @@ func (n SchedNode) dotColor() string {
 	return ""
 }
 
+func (n SchedNode) edgeColor() (color, size string) {
+	task := n.taskRef
+	if task.IsDone() {
+		return "green", "8"
+	}
+	return "black", "1"
+}
+
 func (n SchedNode) Attributes() []encoding.Attribute {
 	e := []encoding.Attribute{
 		{Key: "label", Value: n.taskRef.Name()},
@@ -61,23 +77,34 @@ func (n SchedNode) Attributes() []encoding.Attribute {
 		e = append(e, encoding.Attribute{Key: "fillcolor", Value: color})
 		e = append(e, encoding.Attribute{Key: "style", Value: "filled"})
 	}
+	edgeColor, edgeSize := n.edgeColor()
+	if edgeColor != "" {
+		e = append(e, encoding.Attribute{Key: "color", Value: edgeColor})
+	}
+	if edgeSize != "" {
+		e = append(e, encoding.Attribute{Key: "penwidth", Value: edgeSize})
+	}
 	return e
 }
 
 type Scheduler struct {
-	tasks         []*SchedNode
-	metadataLock  sync.RWMutex
-	runSequential bool
-	graph         SchedGraph
-	rootNode      *SchedNode
+	tasks           []*SchedNode
+	metadataLock    sync.RWMutex
+	fileLock        sync.Mutex
+	runSequential   bool
+	graph           SchedGraph
+	rootNode        *SchedNode
+	doPrintProgress bool
 }
 
 func NewScheduler(runSequential bool) *Scheduler {
 	s := &Scheduler{
 		//tasks:         []Tasker{},
-		metadataLock:  sync.RWMutex{},
-		runSequential: runSequential,
-		graph:         SchedGraph{simple.NewDirectedGraph()},
+		metadataLock:    sync.RWMutex{},
+		fileLock:        sync.Mutex{},
+		runSequential:   runSequential,
+		graph:           SchedGraph{simple.NewDirectedGraph()},
+		doPrintProgress: false,
 	}
 	// Add a dummpy node to the graph
 	baseNodeId := s.graph.NewNode().ID()
@@ -109,21 +136,22 @@ func (s *Scheduler) addTaskToGraph(parent, child Tasker) {
 	}
 }
 
-func (s *Scheduler) willAddNewCycle(parent, child Tasker) bool {
+func (s *Scheduler) willAddNewCycle(parent, child Tasker, allowSelfCycle bool) bool {
 	// Get the existing nodes
 	pNode := s.getTaskInternalNode(parent)
 	cNode := s.getTaskInternalNode(child)
 
 	// Check if self cycle
 	if pNode.ID() == cNode.ID() {
+		//TODO DETECT PACKAGE SELF CYCLES
 		parent.TLog(logrus.InfoLevel, "Self cycle detected for %s", parent.ID())
-		return true
+		return !allowSelfCycle
 	}
 
 	// Check for cycle if we added this edge
-	hadEdge := s.graph.HasEdgeFromTo(pNode.ID(), cNode.ID())
-	if hadEdge {
-		parent.TLog(logrus.FatalLevel, "Double edge detected between %s and %s", parent.ID(), child.ID())
+	if s.graph.HasEdgeFromTo(pNode.ID(), cNode.ID()) {
+		// If the edge already exists, its probably fine
+		return false
 	}
 
 	s.graph.SetEdge(s.graph.NewEdge(pNode, cNode))
@@ -134,8 +162,16 @@ func (s *Scheduler) willAddNewCycle(parent, child Tasker) bool {
 	return len(cycles) > 0
 }
 
+func (s *Scheduler) addEdge(parent, child *SchedNode) {
+	if parent.ID() == child.ID() || s.graph.HasEdgeFromTo(parent.ID(), child.ID()) {
+		return
+	} else {
+		s.graph.SetEdge(s.graph.NewEdge(parent, child))
+	}
+}
+
 // Returns nil if the task can't be added due to cycle
-func (s *Scheduler) AddTask(parent, newTask Tasker) Tasker {
+func (s *Scheduler) AddTask(parent, newTask Tasker, allowSelfCycle bool) Tasker {
 	if !s.runSequential {
 		s.metadataLock.Lock()
 		defer s.metadataLock.Unlock()
@@ -144,18 +180,23 @@ func (s *Scheduler) AddTask(parent, newTask Tasker) Tasker {
 		parent = s.rootNode.taskRef
 	}
 
+	if newTask.DirtyLevel() > buildconfig.CurrentBuildConfig.MaxDirt {
+		newTask.TLog(logrus.FatalLevel, "Task %s has a dirt level greater than the max dirt level", newTask.ID())
+		return nil
+	}
+
 	existingNewTaskNode := s.getTaskInternalNode(newTask)
 	if existingNewTaskNode != nil {
 		parent.TLog(logrus.InfoLevel, "Task %s already exists in the scheduler", newTask.ID())
 		newTask = existingNewTaskNode.taskRef
 
 		//Check cycle, we must return error if cycle is detected
-		if s.willAddNewCycle(parent, newTask) {
+		if s.willAddNewCycle(parent, newTask, allowSelfCycle) {
 			parent.TLog(logrus.WarnLevel, "Cycle detected between %s and %s", parent.ID(), newTask.ID())
 			return nil
 		} else {
 			// Add the task to the graph
-			s.graph.SetEdge(s.graph.NewEdge(s.getTaskInternalNode(parent), existingNewTaskNode))
+			s.addEdge(s.getTaskInternalNode(parent), existingNewTaskNode)
 		}
 
 	} else {
@@ -189,6 +230,41 @@ func (s *Scheduler) getTaskInternalNode(prospectiveTask Tasker) *SchedNode {
 	return nil
 }
 
+func (s *Scheduler) StartProgressPrinter() {
+	s.metadataLock.RLock()
+	defer s.metadataLock.RUnlock()
+	if s.doPrintProgress {
+		return
+	}
+	s.doPrintProgress = true
+
+	go func() {
+		for s.doPrintProgress {
+			s.metadataLock.RLock()
+			total := len(s.tasks)
+			done := 0
+			for _, t := range s.tasks {
+				if t.taskRef.IsDone() {
+					done++
+				}
+			}
+			percent := (float64(done) / float64(total)) * 100
+
+			logger.Log.Infof("Progress: %d/%d tasks done (%.2f%%)", done, total, percent)
+			s.metadataLock.RUnlock()
+
+			// Sleep for a bit
+			<-time.After(5 * time.Second)
+		}
+	}()
+}
+
+func (s *Scheduler) StopProgressPrinter() {
+	s.metadataLock.Lock()
+	defer s.metadataLock.Unlock()
+	s.doPrintProgress = false
+}
+
 func (s *Scheduler) Done() bool {
 	s.metadataLock.RLock()
 	defer s.metadataLock.RUnlock()
@@ -202,7 +278,23 @@ func (s *Scheduler) Done() bool {
 }
 
 // WriteDOTGraph serializes a graph into a DOT formatted object
-func (s *Scheduler) WriteDOTGraph(output io.Writer) (err error) {
+func (s *Scheduler) WriteDOTGraph(outputFull, outputClean io.Writer) (err error) {
+	s.metadataLock.RLock()
+	s.fileLock.Lock()
+	defer s.metadataLock.RUnlock()
+	defer s.fileLock.Unlock()
+
+	if outputFull != nil {
+		bytesFull, err := dot.Marshal(s.graph, "scheduler", "", "")
+		if err != nil {
+			return err
+		}
+		_, err = outputFull.Write(bytesFull)
+		if err != nil {
+			return err
+		}
+	}
+
 	// We want to hack up the graph to make it look nice
 	gCopy := SchedGraph{simple.NewDirectedGraph()}
 	for _, n := range graph.NodesOf(s.graph.Nodes()) {
@@ -220,11 +312,37 @@ func (s *Scheduler) WriteDOTGraph(output io.Writer) (err error) {
 			gCopy.RemoveNode(node.ID())
 		}
 	}
-
-	bytes, err := dot.Marshal(gCopy, "scheduler", "", "")
-	if err != nil {
-		return
+	// Remove any node that is a azl-toolchain capability with dirt maxdirt
+	for _, n := range graph.NodesOf(gCopy.Nodes()) {
+		node := n.(*SchedNode)
+		id := node.taskRef.ID()
+		dirt := node.taskRef.DirtyLevel()
+		if dirt == buildconfig.CurrentBuildConfig.MaxDirt && strings.Contains(id, "CAP") && strings.Contains(id, "azl-toolchain") {
+			gCopy.RemoveNode(node.ID())
+		}
 	}
-	_, err = output.Write(bytes)
+	// remove all nodes that have no parents, except the root node. Repeat until no more nodes are removed
+	for didRemove := true; didRemove; {
+		didRemove = false
+		for _, n := range graph.NodesOf(gCopy.Nodes()) {
+			node := n.(*SchedNode)
+			if gCopy.To(node.ID()).Len() == 0 && node.ID() != s.rootNode.ID() {
+				gCopy.RemoveNode(node.ID())
+				didRemove = true
+			}
+		}
+	}
+
+	if outputClean != nil {
+		bytesClean, err := dot.Marshal(gCopy, "scheduler", "", "")
+		if err != nil {
+			return err
+		}
+		_, err = outputClean.Write(bytesClean)
+		if err != nil {
+			return err
+		}
+	}
+
 	return
 }

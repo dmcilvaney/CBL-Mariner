@@ -7,10 +7,21 @@ package toolkit_types
 
 type SourceFile struct {
 	Path string
+	Type SourceFileType
 }
 
-func NewSourceFile(path string) *SourceFile {
+type SourceFileType int
+
+const (
+	SourceFileTypePatch  SourceFileType = iota
+	SourceFileTypeSource SourceFileType = iota
+)
+
+func NewSourceFile(path string, fileType SourceFileType) *SourceFile {
 	return &SourceFile{
 		Path: path,
+		Type: fileType,
 	}
 }
+
+type SourceFiles []*SourceFile

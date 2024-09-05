@@ -781,6 +781,10 @@ func readSPECTagArray(specFile, sourceDir, tag string, arch string, defines map[
 	return rpm.QuerySPEC(specFile, sourceDir, queryFormat, arch, defines, rpm.QueryHeaderArgument)
 }
 
+func HydrateFile(ctx context.Context, fileTypeToHydrate fileType, specFile, workingDir string, srcConfig sourceRetrievalConfiguration, currentSignatures, defines map[string]string, netOpsSemaphore chan struct{}) (err error) {
+	return hydrateFiles(ctx, fileTypeToHydrate, specFile, workingDir, srcConfig, currentSignatures, defines, netOpsSemaphore)
+}
+
 // hydrateFiles will attempt to retrieve all sources needed to build an SRPM from a SPEC.
 // Will alter `currentSignatures`,
 func hydrateFiles(ctx context.Context, fileTypeToHydrate fileType, specFile, workingDir string, srcConfig sourceRetrievalConfiguration, currentSignatures, defines map[string]string, netOpsSemaphore chan struct{}) (err error) {

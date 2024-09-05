@@ -46,61 +46,67 @@ func (r *RpmCapibilityTask) Execute() {
 	msg := fmt.Sprintf("RPM Capability: %s", r.capability.String())
 
 	specDB := r.AddDependency(
-		NewLoadSpecDataTask(),
+		NewLoadSpecDataTask(), task.NoSelfCycle,
 	).(*LoadSpecDataTask).Value()
 
 	// Find in our database to see what we need to build
 	capLookup := specDB.LookupRpmCapabilityTask(r.capability)
 
 	// See if we can just use an existing capability with lower dirt
-	var existingCap *RpmCapibilityTask = nil
-	for dirtLevel := 0; dirtLevel < r.DirtyLevel(); dirtLevel++ {
-		checkForExisting := r.AddDependency(
-			NewRpmCapibilityTask(r.capability, dirtLevel),
+	//var existingCap *RpmCapibilityTask = nil
+	// for dirtLevel := 0; dirtLevel < r.DirtyLevel(); dirtLevel++ {
+	// 	checkForExisting := r.AddDependency(
+	// 		NewRpmCapibilityTask(r.capability, dirtLevel),
+	// 	)
+	// 	// Found an existing capability that doesn't create a circular dependency
+	// 	if checkForExisting != nil {
+	// 		existingCap = checkForExisting.(*RpmCapibilityTask)
+	// 		r.cloneCapability(existingCap.Value())
+	// 		break
+	// 	}
+	// }
+
+	//if existingCap == nil {
+	usedCache := false
+	if capLookup == nil || r.DirtyLevel() >= buildconfig.CurrentBuildConfig.MaxDirt {
+		// TODO, use the cache lookup via capability to find an rpm that might provide this... We don't want to just blindly use PMC
+		r.TLog(logrus.WarnLevel, "Failed to find package for capability in DB, need to do lookup!")
+		r.findCachedCapability(buildconfig.CurrentBuildConfig.MaxDirt)
+		usedCache = true
+	} else {
+		builtSpecTask := r.AddDependency(
+			NewBuildSpecFileTask(capLookup.SpecPath, r.DirtyLevel(), buildconfig.CurrentBuildConfig), task.NoSelfCycle,
 		)
-		// Found an existing capability that doesn't create a circular dependency
-		if checkForExisting != nil {
-			existingCap = checkForExisting.(*RpmCapibilityTask)
-			r.cloneCapability(existingCap.Value())
-			break
-		}
-	}
-
-	if existingCap == nil {
-		if capLookup == nil || r.DirtyLevel() >= buildconfig.CurrentBuildConfig.MaxDirt {
-			// TODO, use the cache lookup via capability to find an rpm that might provide this... We don't want to just blindly use PMC
-			r.TLog(logrus.WarnLevel, "Failed to find package for capability in DB, need to do lookup!")
-			r.findCachedCapability(r.DirtyLevel() + 1)
-		} else {
-			builtSpecTask := r.AddDependency(
-				NewBuildSpecFileTask(capLookup.SpecPath, r.DirtyLevel(), buildconfig.CurrentBuildConfig),
+		// Nil means circular dependency... we can queue up a dirty copy, or if its too dirty just grab from the cache.
+		// If we reach the max dirt level, we just grab from the cache always.
+		allowableDirtLevel := r.DirtyLevel() + 1
+		if builtSpecTask == nil && allowableDirtLevel < buildconfig.CurrentBuildConfig.MaxDirt {
+			r.TLog(logrus.InfoLevel, "Queueing up a dirty (%d) copy of the spec file", allowableDirtLevel)
+			builtSpecTask = r.AddDependency(
+				NewBuildSpecFileTask(capLookup.SpecPath, allowableDirtLevel, buildconfig.CurrentBuildConfig), task.NoSelfCycle,
 			)
-			// Nil means circular dependency... we can queue up a dirty copy, or if its too dirty just grab from the cache.
-			// If we reach the max dirt level, we just grab from the cache always.
-			allowableDirtLevel := r.DirtyLevel() + 1
-			if builtSpecTask == nil && allowableDirtLevel < buildconfig.CurrentBuildConfig.MaxDirt {
-				r.TLog(logrus.InfoLevel, "Queueing up a dirty (%d) copy of the spec file", allowableDirtLevel)
-				builtSpecTask = r.AddDependency(
-					NewBuildSpecFileTask(capLookup.SpecPath, allowableDirtLevel, buildconfig.CurrentBuildConfig),
-				)
-				if builtSpecTask == nil {
-					r.TLog(logrus.FatalLevel, "Failed to build spec file")
-				}
-			}
-
-			if builtSpecTask != nil {
-				builtSpec := builtSpecTask.(*BuildSpecFileTask).Value()
-				r.assignBuiltSpec(&builtSpec)
-			} else {
-				r.TLog(logrus.InfoLevel, "Unable to queue up a dirty copy of the spec file, checking cache with dirt level %d", allowableDirtLevel)
-				// We are too dirty, just grab from the cache
-				r.findCachedCapability(allowableDirtLevel)
+			if builtSpecTask == nil {
+				r.TLog(logrus.FatalLevel, "Failed to build spec file")
 			}
 		}
-	}
 
-	// Make sure we have the runtime dependencies
-	r.collectRuntimeDeps()
+		if builtSpecTask != nil {
+			builtSpec := builtSpecTask.(*BuildSpecFileTask).Value()
+			r.assignBuiltSpec(&builtSpec)
+		} else {
+			r.TLog(logrus.InfoLevel, "Unable to queue up a dirty copy of the spec file, checking cache with dirt level %d", allowableDirtLevel)
+			// We are too dirty, just grab from the cache
+			r.findCachedCapability(allowableDirtLevel)
+			usedCache = true
+		}
+	}
+	//}
+
+	// Cache will handle its own runtime deps
+	if !usedCache {
+		r.collectRuntimeDeps()
+	}
+	r.WaitForDeps()
 
 	r.TLog(logrus.InfoLevel, msg)
 	r.SetValue(toolkit_types.NewRpmCapibility(r.capability, r.mappedPackage))
@@ -109,7 +115,7 @@ func (r *RpmCapibilityTask) Execute() {
 
 func (r *RpmCapibilityTask) findCachedCapability(allowableDirt int) {
 	RpmCacheEntry := r.AddDependency(
-		NewRpmCacheTask(r.capability, allowableDirt),
+		NewRpmCacheTask(r.capability, allowableDirt), task.NoSelfCycle,
 	).(*RpmCacheTask).Value()
 
 	if RpmCacheEntry == nil {
@@ -154,8 +160,18 @@ func (r *RpmCapibilityTask) collectRuntimeDeps() {
 		if !strings.HasPrefix(dep.Name, "rpmlib") {
 			depTask := r.AddDependency(
 				NewRpmCapibilityTask(dep, r.DirtyLevel()),
-			).(*RpmCapibilityTask)
-			depTasks = append(depTasks, depTask)
+				task.NoSelfCycle,
+			)
+			if depTask == nil {
+				depTask = r.AddDependency(
+					NewRpmCapibilityTask(dep, r.DirtyLevel()+1),
+					task.NoSelfCycle,
+				)
+			}
+			if depTask == nil {
+				r.TLog(logrus.FatalLevel, "Failed to find package for capability")
+			}
+			depTasks = append(depTasks, depTask.(*RpmCapibilityTask))
 		}
 	}
 	for _, dep := range depTasks {

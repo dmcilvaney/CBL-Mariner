@@ -317,12 +317,13 @@ relative_paths     := $(shell realpath --relative-to=$(PROJECT_ROOT) $(wildcard 
 newsched: $(go-newsched_rpm) $(chroot_worker) $(specs_file)
 	mkdir -p $(newsched_build_dir)
 	$(go-newsched_rpm) \
-		$(foreach spec,$(wildcard $(SPECS_DIR)/**/*.spec),--specs="$(spec)") \
+		$(foreach spec,$(wildcard $(SPECS_DIR)/**/newtoolchain.spec),--specs="$(spec)") \
 		--spec-data=$(specs_file) \
 		--worker-tar="$(chroot_worker)" \
 		--repo-root="$(PROJECT_ROOT)" \
 		--fake-pmc-dir="$(PROJECT_ROOT)/fake_pmc" \
 		--build-dir="$(newsched_build_dir)" \
 		--dist-tag=$(DIST_TAG) \
+		--source-url=$(SOURCE_URL) \
 		--log-file=$(newsched_log) \
 		--log-level=$(LOG_LEVEL)

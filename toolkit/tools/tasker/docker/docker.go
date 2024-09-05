@@ -13,7 +13,9 @@ import (
 
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/directory"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/file"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/pkgjson"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/randomization"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/resources"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/shell"
 	"github.com/microsoft/azurelinux/toolkit/tools/tasker/buildconfig"
@@ -82,6 +84,7 @@ type DockerMount struct {
 	Dest   string
 }
 
+// const dockerLogLevel = logrus.InfoLevel
 const dockerLogLevel = logrus.DebugLevel
 
 // Run a command and commit the container to an image with the given tag. Don't use a dockerfile since this is so simple
@@ -125,7 +128,11 @@ func buildImage(tag string) error {
 	}
 
 	// Build the image
-	_, stderr, err := shell.NewExecBuilder("docker", "build", "-t", tag, "-f", dockerDstPath, ".").WorkingDirectory(tempWorkDir).LogLevel(logrus.InfoLevel, logrus.InfoLevel).ExecuteCaptureOuput()
+	randomCacheBustVal := ""
+	if tag == ImageBase {
+		randomCacheBustVal, _ = randomization.RandomString(24, randomization.LegalCharactersHex)
+	}
+	_, stderr, err := shell.NewExecBuilder("docker", "build", "--build-arg", "CACHEBUST="+randomCacheBustVal, "--network", "host", "-t", tag, "-f", dockerDstPath, ".").WorkingDirectory(tempWorkDir).LogLevel(logrus.InfoLevel, logrus.InfoLevel).ExecuteCaptureOuput()
 	if err != nil {
 		return fmt.Errorf("error building image: %s", stderr)
 	}
@@ -135,7 +142,7 @@ func buildImage(tag string) error {
 }
 
 // Run command in container. Mount points are passed as arguments.
-func Run(command string, args []string, outputMountPoint *DockerMount, overlayMounts []DockerOverlay, deps []*pkgjson.PackageVer, tag string, prepScript PrepScript, logFile string, printDebug bool) (stdout, stderr string, err error) {
+func Run(command string, args []string, outputMountPoint *DockerMount, overlayMounts []DockerOverlay, deps []*pkgjson.PackageVer, tag string, prepScript PrepScript, logFilePath string, printDebug bool) (stdout, stderr string, err error) {
 	if err := buildImage(tag); err != nil {
 		return "", "", err
 	}
@@ -143,6 +150,12 @@ func Run(command string, args []string, outputMountPoint *DockerMount, overlayMo
 	mountPointArg := []string{}
 	if outputMountPoint != nil {
 		mountPointArg = append(mountPointArg, "-v", fmt.Sprintf("%s:%s", outputMountPoint.Source, outputMountPoint.Dest))
+	}
+
+	baseWorkDir, err := os.MkdirTemp(buildconfig.CurrentBuildConfig.TempDir, "docker-overlay")
+	// We do not defer removal right away, only clean up on success so we can debug
+	if err != nil {
+		return "", "", fmt.Errorf("error creating temp work dir: %s", err)
 	}
 
 	for _, overlay := range overlayMounts {
@@ -156,16 +169,18 @@ func Run(command string, args []string, outputMountPoint *DockerMount, overlayMo
 			return "", "", fmt.Errorf("error creating overlay mount: %s", err)
 		}
 		dst := overlay.Dest
-		baseWorkDir, err := os.MkdirTemp("", "docker-overlay")
+
+		overlayDir, err := os.MkdirTemp(baseWorkDir, "overlay")
 		if err != nil {
 			return "", "", fmt.Errorf("error creating temp work dir: %s", err)
 		}
-		workDir := path.Join(baseWorkDir, "work")
+
+		workDir := path.Join(overlayDir, "work")
 		err = directory.EnsureDirExists(workDir)
 		if err != nil {
 			return "", "", fmt.Errorf("error creating overlay mount: %s", err)
 		}
-		upperDir := path.Join(baseWorkDir, "upper")
+		upperDir := path.Join(overlayDir, "upper")
 		err = directory.EnsureDirExists(upperDir)
 		if err != nil {
 			return "", "", fmt.Errorf("error creating overlay mount: %s", err)
@@ -192,10 +207,11 @@ func Run(command string, args []string, outputMountPoint *DockerMount, overlayMo
 
 		for _, overlay := range overlayMounts {
 			if overlay.Dest == "/repos/upstream" {
-				setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--upstream-repo=%d", overlay.Priority))
+				setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--upstream-repo-priority=%d", overlay.Priority))
+			} else {
+				//setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--repodir=%s:%d", overlayMounts[i+1], i+1))
+				setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--repodir=%s:%d", overlay.Dest, overlay.Priority))
 			}
-			//setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--repodir=%s:%d", overlayMounts[i+1], i+1))
-			setupScriptArgs = append(setupScriptArgs, fmt.Sprintf("--repodir=%s:%d", overlay.Dest, overlay.Priority))
 		}
 
 		// Add the deps
@@ -204,7 +220,7 @@ func Run(command string, args []string, outputMountPoint *DockerMount, overlayMo
 		}
 	}
 
-	dockerArgs := []string{"run", "--rm"}
+	dockerArgs := []string{"run", "--rm", "--network", "host"}
 	dockerArgs = append(dockerArgs, mountPointArg...)
 	dockerArgs = append(dockerArgs, tag)
 	dockerArgs = append(dockerArgs, setupScriptArgs...)
@@ -212,37 +228,59 @@ func Run(command string, args []string, outputMountPoint *DockerMount, overlayMo
 	dockerArgs = append(dockerArgs, args...)
 
 	//output, stderr, err := shell.Execute("docker", dockerArgs...)
-	fmt.Println("docker", `'`+strings.Join(dockerArgs, "' '")+`'`)
+
 	docker := shell.NewExecBuilder("docker", dockerArgs...).LogLevel(dockerLogLevel, dockerLogLevel)
 
 	// If log file, use Callbacks() to log each line to the log file
-	if logFile != "" {
-		err = directory.EnsureDirExists(filepath.Dir(logFile))
+	if logFilePath == "" {
+		workdir := filepath.Join(buildconfig.CurrentBuildConfig.TempDir, "dockerlogs")
+		err = directory.EnsureDirExists(workdir)
 		if err != nil {
-			return "", "", fmt.Errorf("error ensuring dir exists for log file: %s", err)
+			return "", "", fmt.Errorf("error ensuring dir %s exists for log file: %s", workdir, err)
 		}
-		// Open the file, clearing it if it exists
-		logFile, err := os.OpenFile(logFile, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+		// Just grab the name and then close the file, we will open again later
+		logFileHandle, err := os.CreateTemp(workdir, "run*.log")
 		if err != nil {
-			return "", "", fmt.Errorf("error opening log file: %s", err)
+			return "", "", fmt.Errorf("error creating temp log file: %s", err)
 		}
-		defer logFile.Close()
-		callbackFunc := func(line string) {
-			logFile.WriteString(line + "\n")
-		}
-		docker = docker.Callbacks(callbackFunc, callbackFunc)
+		logFilePath = logFileHandle.Name()
+		logFileHandle.Close()
 	}
-	return docker.ExecuteCaptureOuput()
+
+	err = directory.EnsureDirExists(filepath.Dir(logFilePath))
+	if err != nil {
+		return "", "", fmt.Errorf("error ensuring dir exists for log file: %s", err)
+	}
+	// Open the file, clearing it if it exists
+	logFile, err := os.OpenFile(logFilePath, os.O_CREATE|os.O_TRUNC|os.O_WRONLY, os.ModePerm)
+	if err != nil {
+		return "", "", fmt.Errorf("error opening log file: %s", err)
+	}
+	defer logFile.Close()
+	// Write the command we are running to the log file
+	logFile.WriteString(fmt.Sprintf("Running command: docker %s\n", strings.Join(dockerArgs, "' '")+"'"))
+	callbackFunc := func(line string) {
+		logFile.WriteString(line + "\n")
+	}
+	docker = docker.Callbacks(callbackFunc, callbackFunc)
+
+	fmt.Printf("docker '%s'\nLogging to %s\n", strings.Join(dockerArgs, "' '"), logFilePath)
+
+	stdout, stderr, err = docker.ExecuteCaptureOuput()
+	if err == nil {
+		defer os.RemoveAll(baseWorkDir)
+	} else {
+		logger.Log.Errorf("Docker command failed: %s", err)
+		logger.Log.Errorf("    Log file: %s", logFilePath)
+		logger.Log.Errorf("    Working directory: %s", baseWorkDir)
+	}
+	return stdout, stderr, err
 }
 
 // Generate standard mounts
-func MountsForDirtLevel(dirtLevel int) ([]DockerOverlay, error) {
-	if dirtLevel == buildconfig.CurrentBuildConfig.MaxDirt {
-		return MountForInput(), nil
-	}
-
+func MountsForDirtLevel(allowableDirtLevel int, alwaysCache bool) ([]DockerOverlay, error) {
 	repoMounts := []DockerOverlay{}
-	for i := 0; i <= dirtLevel && i < buildconfig.CurrentBuildConfig.MaxDirt; i++ {
+	for i := 0; i <= allowableDirtLevel && i < buildconfig.CurrentBuildConfig.MaxDirt; i++ {
 		err := directory.EnsureDirExists(buildconfig.CurrentBuildConfig.RpmsDirsByDirtLevel[i])
 		if err != nil {
 			return nil, fmt.Errorf("error ensuring dir exists while creating mounts: %s", err)
@@ -254,6 +292,15 @@ func MountsForDirtLevel(dirtLevel int) ([]DockerOverlay, error) {
 		}
 		repoMounts = append(repoMounts, newOverlay)
 	}
+
+	if allowableDirtLevel >= buildconfig.CurrentBuildConfig.MaxDirt {
+		repoMounts = append(repoMounts, MountForInput()...)
+	}
+
+	if alwaysCache || allowableDirtLevel >= buildconfig.CurrentBuildConfig.MaxDirt {
+		repoMounts = append(repoMounts, MountForUpstreamCache()...)
+	}
+
 	return repoMounts, nil
 }
 
@@ -277,4 +324,12 @@ func MountForUpstreamCache() []DockerOverlay {
 		},
 	}
 	return repoMounts
+}
+
+func AllMounts() []DockerOverlay {
+	dirtyRepos, err := MountsForDirtLevel(buildconfig.CurrentBuildConfig.MaxDirt, true)
+	if err != nil {
+		logrus.Fatal(err)
+	}
+	return dirtyRepos
 }

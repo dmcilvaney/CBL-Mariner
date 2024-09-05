@@ -17,4 +17,6 @@ type BuildConfig struct {
 	DoCheck               bool
 	MaxDirt               int  // Maximum number of dirt levels, the repo corresponding to this will be "PMC" aka "InputRepoDir"
 	AllowCacheForAnyLevel bool // Allow upstream cached pacakges to be used for any dirt level if we don't know how to build a local one
+	SourceUrl             string
+	TempDir               string
 }

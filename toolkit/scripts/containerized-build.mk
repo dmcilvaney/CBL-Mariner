@@ -46,6 +46,10 @@ ifeq ($(QUIET),y)
 containerized_build_args += -q
 endif
 
+ifneq ($(REBUILD_TOOLCHAIN),y)
+containerized-rpmbuild: $(toolchain_rpms)
+endif
+
 ##help:target:containerized-rpmbuild=Launch containerized shell for inner-loop RPM building/testing.
 containerized-rpmbuild: $(no_repo_acl)
 	$(SCRIPTS_DIR)/containerized-build/create_container_build.sh $(containerized_build_args)

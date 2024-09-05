@@ -16,7 +16,7 @@ func main() {
 	f := &FibonacciTask{
 		n: 7,
 	}
-	s.AddTask(nil, f)
+	s.AddTask(nil, f, task.NoSelfCycle)
 
 	result := f.Value()
 	fmt.Println(result)

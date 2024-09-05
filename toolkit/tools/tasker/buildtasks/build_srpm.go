@@ -53,6 +53,28 @@ func NewSrpmFileTask(sourceSpec *toolkit_types.SpecFile, dirtLevel int) *SrpmFil
 func (s *SrpmFileTask) Execute() {
 	s.TLog(logrus.InfoLevel, "Execute(): '%s'", s.ID())
 
+	// We always assume we want a copy of the toolchain
+	toolchainDep := &pkgjson.PackageVer{Name: "azl-toolchain"}
+	toolchain := s.AddDependency(
+		NewRpmCapibilityTask(
+			toolchainDep,
+			s.DirtyLevel(),
+		),
+		task.NoSelfCycle,
+	)
+	if toolchain == nil {
+		toolchain = s.AddDependency(
+			NewRpmCapibilityTask(
+				toolchainDep,
+				s.DirtyLevel()+1,
+			),
+			task.NoSelfCycle,
+		)
+	}
+	if toolchain == nil {
+		s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+	}
+
 	// Start with the .nosrc.rpm, add deps until we can build the real .src.rpm
 	depList := make([]*pkgjson.PackageVer, 0)
 	// Iterate until the dep lists converge
@@ -65,7 +87,7 @@ func (s *SrpmFileTask) Execute() {
 		s.buildSrpm(s.srpmFile, depList, doSkipDependencies, shouldDoDynamic, buildconfig.CurrentBuildConfig)
 		// Record the any possible new deps
 		changed = false
-		for _, dep := range s.srpmFile.BuildRequires {
+		for _, dep := range s.srpmFile.Requires {
 			if !strings.HasPrefix(dep.Name, "rpmlib") {
 				alreadyFound := sliceutils.Contains(depList, dep, sliceutils.PackageVerMatch)
 
@@ -73,12 +95,12 @@ func (s *SrpmFileTask) Execute() {
 					changed = true
 					depList = append(depList, dep)
 					depTask := s.AddDependency(
-						NewRpmCapibilityTask(dep, s.DirtyLevel()),
+						NewRpmCapibilityTask(dep, s.DirtyLevel()), task.NoSelfCycle,
 					)
 					if depTask == nil {
 						s.TLog(logrus.InfoLevel, "Would create cycle for SRPM build, incrementing dirt level")
 						depTask = s.AddDependency(
-							NewRpmCapibilityTask(dep, s.DirtyLevel()+1),
+							NewRpmCapibilityTask(dep, s.DirtyLevel()+1), task.NoSelfCycle,
 						)
 					}
 					if depTask == nil {
@@ -110,8 +132,6 @@ func (s *SrpmFileTask) Execute() {
 
 // Build the .src.rpm and update the path in the srpmFile
 func (s *SrpmFileTask) buildSrpm(srpm *toolkit_types.SrpmFile, deps []*pkgjson.PackageVer, noDeps, doDynamic bool, buildConfig buildconfig.BuildConfig) {
-	l := task.AcquireTaskLimiter(1)
-	defer l.Release()
 
 	var err error
 
@@ -135,11 +155,13 @@ func (s *SrpmFileTask) buildSrpm(srpm *toolkit_types.SrpmFile, deps []*pkgjson.P
 	if s.DirtyLevel() > 0 {
 		macros["dist"] = fmt.Sprintf("%s.dirty_%d", macros["dist"], s.DirtyLevel())
 	}
+	s.prepRealSources(topDir, srpm.SourceSpec)
+
+	s.ClaimLimit(1)
+	defer s.ReleaseLimit()
 	if noDeps {
-		s.prepDummySources(topDir, srpm.SourceSpec)
-		srpmPath, err = rpm.GenerateNoSRPMFromSPEC(tmpSpecPath, topDir, deps, macros, s.DirtyLevel()+1, len(deps) > 0)
+		srpmPath, err = rpm.GenerateNoSRPMFromSPEC(tmpSpecPath, topDir, deps, macros, s.DirtyLevel()+1, doDynamic)
 	} else {
-		s.prepRealSources(topDir, srpm.SourceSpec)
 		srpmPath, err = rpm.GenerateSRPMFromSPEC(tmpSpecPath, topDir, deps, macros, s.DirtyLevel()+1)
 	}
 	if err != nil {
@@ -153,10 +175,10 @@ func (s *SrpmFileTask) buildSrpm(srpm *toolkit_types.SrpmFile, deps []*pkgjson.P
 	if err != nil {
 		s.TLog(logrus.FatalLevel, "Failed to query SRPM requires: %v", err)
 	}
-	srpm.BuildRequires = make([]*pkgjson.PackageVer, 0)
+	srpm.Requires = make([]*pkgjson.PackageVer, 0)
 	for _, br := range allBRs {
 		if !strings.HasPrefix(br.Name, "rpmlib") {
-			srpm.BuildRequires = append(srpm.BuildRequires, br)
+			srpm.Requires = append(srpm.Requires, br)
 		}
 	}
 
@@ -175,7 +197,7 @@ func (s *SrpmFileTask) prepDummySources(topDir string, spec *toolkit_types.SpecF
 	}
 
 	for _, source := range spec.Sources {
-		err = file.Create(filepath.Join(sourcesDir, source), os.ModePerm)
+		err = file.Create(filepath.Join(sourcesDir, source.Path), os.ModePerm)
 		if err != nil {
 			s.TLog(logrus.FatalLevel, "Failed to create source file: %v", err)
 		}
@@ -183,18 +205,9 @@ func (s *SrpmFileTask) prepDummySources(topDir string, spec *toolkit_types.SpecF
 }
 
 func (s *SrpmFileTask) prepRealSources(topDir string, spec *toolkit_types.SpecFile) {
-	//TODO implement this, we assume all files are next to the .spec for now.
 	sourcesDir := filepath.Join(topDir, "SOURCES")
-	err := directory.EnsureDirExists(sourcesDir)
-	if err != nil {
-		s.TLog(logrus.FatalLevel, "Failed to create sources dir: %v", err)
-	}
-
-	for _, source := range spec.Sources {
-		srcPath := filepath.Join(filepath.Dir(spec.Path), source)
-		err := file.Copy(srcPath, filepath.Join(sourcesDir, source))
-		if err != nil {
-			s.TLog(logrus.FatalLevel, "Failed to copy source file: %v", err)
-		}
-	}
+	s.AddDependency(
+		NewSourceFilesTask(spec, sourcesDir), task.NoSelfCycle,
+	)
+	s.WaitForDeps()
 }
