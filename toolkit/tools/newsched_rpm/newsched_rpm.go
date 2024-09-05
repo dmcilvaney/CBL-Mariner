@@ -66,6 +66,7 @@ func main() {
 		AllowCacheForAnyLevel: false,
 		SourceUrl:             *sourceUrl,
 		TempDir:               filepath.Join(os.TempDir(), "azl-toolkit"),
+		AddToolchainPackages:  false,
 	}
 	buildConfig.RpmsDirsByDirtLevel[0] = filepath.Join(*buildDirPath, "RPMS")
 	buildConfig.SrpmsDirsByDirtLevel[0] = filepath.Join(*buildDirPath, "SRPMS")

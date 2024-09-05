@@ -58,25 +58,28 @@ func (s *BuildSpecFileTask) Execute() {
 	).(*SrpmFileTask).Value()
 
 	// We always assume we want a copy of the toolchain
-	toolchainDep := &pkgjson.PackageVer{Name: "azl-toolchain"}
-	toolchain := s.AddDependency(
-		NewRpmCapibilityTask(
-			toolchainDep,
-			s.DirtyLevel(),
-		),
-		task.NoSelfCycle,
-	)
-	if toolchain == nil {
-		toolchain = s.AddDependency(
+	var toolchainDep = []*pkgjson.PackageVer{}
+	if buildconfig.CurrentBuildConfig.AddToolchainPackages {
+		toolchainDep = []*pkgjson.PackageVer{{Name: "azl-toolchain"}}
+		toolchain := s.AddDependency(
 			NewRpmCapibilityTask(
-				toolchainDep,
-				s.DirtyLevel()+1,
+				toolchainDep[0],
+				s.DirtyLevel(),
 			),
 			task.NoSelfCycle,
 		)
-	}
-	if toolchain == nil {
-		s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+		if toolchain == nil {
+			toolchain = s.AddDependency(
+				NewRpmCapibilityTask(
+					toolchainDep[0],
+					s.DirtyLevel()+1,
+				),
+				task.NoSelfCycle,
+			)
+		}
+		if toolchain == nil {
+			s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+		}
 	}
 
 	// Enqueue build dependencies
@@ -103,7 +106,7 @@ func (s *BuildSpecFileTask) Execute() {
 	s.WaitForDeps()
 
 	// Build the package
-	s.buildSpecFile(s.specFile, append(s.srpmFile.Requires, toolchainDep), buildconfig.CurrentBuildConfig)
+	s.buildSpecFile(s.specFile, append(s.srpmFile.Requires, toolchainDep...), buildconfig.CurrentBuildConfig)
 
 	s.SetValue(*s.specFile)
 	s.SetDone()

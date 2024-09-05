@@ -19,4 +19,5 @@ type BuildConfig struct {
 	AllowCacheForAnyLevel bool // Allow upstream cached pacakges to be used for any dirt level if we don't know how to build a local one
 	SourceUrl             string
 	TempDir               string
+	AddToolchainPackages  bool
 }

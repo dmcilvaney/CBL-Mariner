@@ -18,6 +18,7 @@ const (
 	AssetsCreateRepoAndRunScript   = "assets/docker/create_repos_and_run.sh"
 	AssetsRepoFileTemplate         = "assets/docker/local.template"
 	AssetsUpstreamRepoFileTemplate = "assets/docker/upstream.template"
+	AssetsAzlToolchainRpm          = "assets/docker/azl-toolchain-1-1.cm2.x86_64.rpm"
 )
 
 var DockerAssets = []string{
@@ -28,6 +29,7 @@ var DockerAssets = []string{
 	AssetsCreateRepoAndRunScript,
 	AssetsRepoFileTemplate,
 	AssetsUpstreamRepoFileTemplate,
+	AssetsAzlToolchainRpm,
 }
 
 //go:embed assets

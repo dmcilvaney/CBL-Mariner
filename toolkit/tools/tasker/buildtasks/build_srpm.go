@@ -54,29 +54,32 @@ func (s *SrpmFileTask) Execute() {
 	s.TLog(logrus.InfoLevel, "Execute(): '%s'", s.ID())
 
 	// We always assume we want a copy of the toolchain
-	toolchainDep := &pkgjson.PackageVer{Name: "azl-toolchain"}
-	toolchain := s.AddDependency(
-		NewRpmCapibilityTask(
-			toolchainDep,
-			s.DirtyLevel(),
-		),
-		task.NoSelfCycle,
-	)
-	if toolchain == nil {
-		toolchain = s.AddDependency(
+	var toolchainDep = []*pkgjson.PackageVer{}
+	if buildconfig.CurrentBuildConfig.AddToolchainPackages {
+		toolchainDep = []*pkgjson.PackageVer{{Name: "azl-toolchain"}}
+		toolchain := s.AddDependency(
 			NewRpmCapibilityTask(
-				toolchainDep,
-				s.DirtyLevel()+1,
+				toolchainDep[0],
+				s.DirtyLevel(),
 			),
 			task.NoSelfCycle,
 		)
-	}
-	if toolchain == nil {
-		s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+		if toolchain == nil {
+			toolchain = s.AddDependency(
+				NewRpmCapibilityTask(
+					toolchainDep[0],
+					s.DirtyLevel()+1,
+				),
+				task.NoSelfCycle,
+			)
+		}
+		if toolchain == nil {
+			s.TLog(logrus.FatalLevel, "Failed to create RPM Capability Task for: azl-toolchain")
+		}
 	}
 
 	// Start with the .nosrc.rpm, add deps until we can build the real .src.rpm
-	depList := make([]*pkgjson.PackageVer, 0)
+	depList := toolchainDep
 	// Iterate until the dep lists converge
 	changed := true
 	i := 1
