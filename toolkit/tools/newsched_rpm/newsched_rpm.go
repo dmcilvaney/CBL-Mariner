@@ -27,7 +27,7 @@ import (
 var (
 	app = kingpin.New("newsched", "Scheduler testing")
 
-	specPaths  = app.Flag("specs", "Spec files to build").Required().ExistingFiles()
+	specPaths  = app.Flag("specs", "Spec files to build").ExistingFiles()
 	specData   = app.Flag("spec-data", "Path to the spec data file.").Required().ExistingFile()
 	fakePmcDir = app.Flag("fake-pmc-dir", "Path to 'PMC', which is actually just a directory of RPMs.").Required().ExistingDir()
 
@@ -63,7 +63,7 @@ func main() {
 		InputRepoDir:          *fakePmcDir,
 		DoCheck:               false,
 		MaxDirt:               2,
-		AllowCacheForAnyLevel: false,
+		AllowCacheForAnyLevel: true,
 		SourceUrl:             *sourceUrl,
 		TempDir:               filepath.Join(os.TempDir(), "azl-toolkit"),
 		AddToolchainPackages:  false,
@@ -97,13 +97,13 @@ func main() {
 	// 		(*specPaths)[0],
 	// 		0,
 	// 		buildconfig.CurrentBuildConfig,
-	// 	)).(*newschedulertasks.BuildSpecFileTask)
+	// 	), task.NoSelfCycle).(*newschedulertasks.BuildSpecFileTask)
 	// goals = append(goals, spec)
 	cap := s.AddTask(
 		nil,
 		newschedulertasks.NewRpmCapibilityTask(
 			&pkgjson.PackageVer{
-				Name: "azl-toolchain",
+				Name: "bash",
 			},
 			0,
 		), task.NoSelfCycle)
