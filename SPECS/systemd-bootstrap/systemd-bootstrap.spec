@@ -1,7 +1,10 @@
+# Disable provides/requires generators, unless we explicitly demand it we always want to prefer systemd proper
+%global
+
 Summary:        Bootstrap version of systemd. Workaround for systemd circular dependency.
 Name:           systemd-bootstrap
 Version:        250.3
-Release:        17%{?dist}
+Release:        999%{?dist}
 License:        LGPLv2+ AND GPLv2+ AND MIT
 Vendor:         Microsoft Corporation
 Distribution:   Azure Linux
@@ -75,7 +78,7 @@ Requires:       libgcrypt
 Requires:       lz4
 Requires:       pam
 Requires:       xz
-AutoReq:        no
+AutoReqProv:    no
 
 %description
 Systemd is an init replacement with better process control and security

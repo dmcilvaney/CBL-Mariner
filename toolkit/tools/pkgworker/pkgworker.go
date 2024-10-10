@@ -256,6 +256,7 @@ func buildSRPMInChroot(chrootDir, rpmDirPath, toolchainDirPath, workerTar, srpmF
 	})
 
 	if err != nil {
+		//debugutils.WaitForDebugger("pkgworker")
 		err = fmt.Errorf("failed to build RPM from SRPM in chroot:\n%w", err)
 		return
 	}
