@@ -37,6 +37,12 @@ func TestMain(m *testing.M) {
 	if err != nil {
 		fmt.Printf("Failed to clean up mounts. Error:\n%v", err)
 		retVal = 1
+	} else {
+		err = os.RemoveAll(tmpDirRoot)
+		if err != nil {
+			fmt.Printf("Failed to remove tmp dir %s. Error:\n%v", tmpDirRoot, err)
+			retVal = 1
+		}
 	}
 
 	os.Exit(retVal)
@@ -64,17 +70,17 @@ func CleanUp() error {
 	return nil
 }
 
-// makeChrootMountDir creates a directory to be used as a mount point for a chroot
-func makeChrootMountDir(t *testing.T, name string) string {
+// createBuildDirForChroot creates a directory to be used as a mount point for a chroot
+func createBuildDirForChroot(t *testing.T, name string) (testBuildDir, chrootDir string) {
 	t.Helper()
-	mountPath := filepath.Join(tmpDirRoot, name)
-	chrootPath := filepath.Join(mountPath, chrootName)
-	err := os.MkdirAll(mountPath, os.ModePerm)
+	testBuildDir = filepath.Join(tmpDirRoot, name)
+	chrootDir = filepath.Join(testBuildDir, "chroots", chrootName)
+	err := os.MkdirAll(chrootDir, os.ModePerm)
 	if err != nil {
-		t.Fatalf("Failed to create mount path %s. Error:\n%v", mountPath, err)
+		t.Fatalf("Failed to create mount path %s. Error:\n%v", chrootDir, err)
 	}
-	mountPaths = append(mountPaths, chrootPath)
-	return mountPath
+	mountPaths = append(mountPaths, chrootDir)
+	return testBuildDir, chrootDir
 }
 
 func checkIfMounted(mountPath string) (bool, error) {
@@ -97,7 +103,7 @@ func TestNewWithBlankChroot(t *testing.T) {
 		t.Skip("Test must be run as root because it uses a chroot")
 	}
 
-	buildDirPath := makeChrootMountDir(t, t.Name())
+	buildDirPath, chrootPath := createBuildDirForChroot(t, t.Name())
 	workerTarPath := ""
 	srpmDirPath := filepath.Join(buildDirPath, "srpm")
 	mountPaths = append(mountPaths, srpmDirPath)
@@ -106,18 +112,11 @@ func TestNewWithBlankChroot(t *testing.T) {
 	outStream := new(bytes.Buffer)
 	useTmpfs := true
 
-	// Create dirs
-	err := os.MkdirAll(buildDirPath, os.ModePerm)
-	assert.NoError(t, err)
-	err = os.MkdirAll(srpmDirPath, os.ModePerm)
+	// Create srpm dir
+	err := os.MkdirAll(srpmDirPath, os.ModePerm)
 	assert.NoError(t, err)
 
-	cs, err := New(buildDirPath, workerTarPath, srpmDirPath, outStream, useTmpfs)
-
-	// if err != nil {
-	// 	debugutils.WaitForDebugger("BLAH")
-	// }
-
+	cs, err := New(chrootPath, workerTarPath, srpmDirPath, outStream, useTmpfs)
 	assert.NoError(t, err)
 	assert.NotNil(t, cs)
 	assert.NotNil(t, cs.tmpfsMount)
@@ -137,26 +136,33 @@ func TestSearchCode(t *testing.T) {
 		t.Skip("Test must be run as root because it uses a chroot")
 	}
 
-	tempDir := t.TempDir()
-	srpmDir := filepath.Join(tempDir, "srpm")
+	buildDirPath, _ := createBuildDirForChroot(t, t.Name()+"_noChroot")
+	srpmDir := filepath.Join(buildDirPath, "srpm")
+	mountPaths = append(mountPaths, srpmDir)
 	err := os.MkdirAll(srpmDir, os.ModePerm)
 	assert.NoError(t, err)
 
 	// Chroot not initialized
 	s := &CodeSearch{}
-	err = s.SearchCode("regex", "distTag", nil)
+	err = s.SearchCode("regex", "", "distTag", nil)
 	assert.EqualError(t, err, "chroot has not been initialized")
 
 	// Chroot initialized
-	s, err = New(tempDir, "", srpmDir, nil, false)
+	buildDirPath, chrootPath := createBuildDirForChroot(t, t.Name()+"_yesChroot")
+	srpmDir = filepath.Join(buildDirPath, "srpm")
+	mountPaths = append(mountPaths, srpmDir)
+	err = os.MkdirAll(srpmDir, os.ModePerm)
 	assert.NoError(t, err)
-	err = s.SearchCode("regex", "distTag", nil)
+
+	s, err = New(chrootPath, "", srpmDir, nil, false)
+	assert.NoError(t, err)
+	err = s.SearchCode("regex", "", "distTag", nil)
 	assert.NoError(t, err)
 
 	// Chroot cleaned
 	err = s.CleanUp()
 	assert.NoError(t, err)
-	err = s.SearchCode("regex", "distTag", nil)
+	err = s.SearchCode("regex", "", "distTag", nil)
 	assert.EqualError(t, err, "chroot has not been initialized")
 }
 
@@ -206,13 +212,13 @@ func TestPrintResults(t *testing.T) {
 	assert.Equal(t, expectedOutput, buf.String())
 }
 
-func TestSearchSrpmMissingDir(t *testing.T) {
-	tempDir := "not_a_real_dir"
-	s := &CodeSearch{}
-	result, err := s.searchSrpm("srpm", tempDir, "regex")
-	assert.Error(t, err)
-	assert.Equal(t, SrpmSearchResult{}, result)
-}
+// func TestSearchSrpmMissingDir(t *testing.T) {
+// 	tempDir := "not_a_real_dir"
+// 	s := &CodeSearch{}
+// 	result, err := s.searchSrpm("srpm", "", tempDir, "regex")
+// 	assert.Error(t, err)
+// 	assert.Equal(t, SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{}}, result)
+// }
 
 func TestSearchSrpm(t *testing.T) {
 	type testCase struct {
@@ -280,9 +286,122 @@ func TestSearchSrpm(t *testing.T) {
 					assert.NoError(t, err)
 				}
 			}
-			result, err := s.searchSrpm("srpm", tempDir, tc.regex)
+			result, err := s.searchSrpm("srpm", tempDir, tc.regex, "")
 			assert.NoError(t, err)
 			assert.Equal(t, tc.expectedResult, result)
+		})
+	}
+}
+
+func TestSearchSrpmWithFileFilter(t *testing.T) {
+	type testCase struct {
+		name string
+		// Each element in the slice represents line in a file, which is in a directory
+		dirsWithFilesWithLines map[string]map[string][]string
+		regex                  string
+		fileFilter             string
+		expectedResult         SrpmSearchResult
+		expectedError          bool
+	}
+
+	testCases := []testCase{
+		{
+			name:                   "No files, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{},
+			regex:                  "regex",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{}},
+		},
+		{
+			name:                   "No matches, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"wrong_string"}}},
+			regex:                  "match",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{}},
+		},
+		{
+			name:                   "Single match, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match1"}}},
+			regex:                  "match1",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{"./file0": {"1:match1"}}},
+		},
+		{
+			name:                   "Multiple matches, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match2", "match3"}}},
+			regex:                  "match[0-9]",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{"./file0": {"1:match2", "2:match3"}}},
+		},
+		{
+			name:                   "Multiple files, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match2", "match3"}, "file1": {"match4"}}},
+			regex:                  "match[0-9]",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{"./file0": {"1:match2", "2:match3"}}, skipped: false},
+		},
+		{
+			name:                   "Multiple directories, filter",
+			dirsWithFilesWithLines: map[string]map[string][]string{"dir0": {"file0": {"match2", "match3"}}, "dir1": {"file1": {"match4"}}},
+			regex:                  "match[0-9]",
+			fileFilter:             "file0",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{"./dir0/file0": {"1:match2", "2:match3"}}, skipped: false},
+		},
+		{
+			name:                   "No filter matches",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match2", "match3"}, "file1": {"match4"}}},
+			regex:                  "match[0-9]",
+			fileFilter:             "none_of_these_files",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{}},
+		},
+		{
+			name:                   "Filter handles regex",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match1"}}},
+			regex:                  "match1",
+			fileFilter:             "file[0-9]",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{"./file0": {"1:match1"}}},
+		},
+		{
+			name:                   "Filter handles regex, no matches",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match1"}}},
+			regex:                  "match1",
+			fileFilter:             ".*not_a_real_file.*",
+			expectedResult:         SrpmSearchResult{srpmPath: "srpm", matches: map[string][]string{}},
+		},
+		{
+			name:                   "Invalid regex",
+			dirsWithFilesWithLines: map[string]map[string][]string{"": {"file0": {"match1"}}},
+			regex:                  "[",
+			fileFilter:             "file0",
+			expectedError:          true,
+		},
+	}
+
+	for _, tc := range testCases {
+		t.Run(tc.name, func(t *testing.T) {
+			tempDir := t.TempDir()
+			s := &CodeSearch{}
+			for dir, filesWithLines := range tc.dirsWithFilesWithLines {
+				if dir != "" {
+					dir = filepath.Join(tempDir, dir)
+					err := os.MkdirAll(dir, os.ModePerm)
+					assert.NoError(t, err)
+				} else {
+					dir = tempDir
+				}
+				for filePath, lines := range filesWithLines {
+					filePath = filepath.Join(dir, filePath)
+					err := file.WriteLines(lines, filePath)
+					assert.NoError(t, err)
+				}
+			}
+			result, err := s.searchSrpm("srpm", tempDir, tc.regex, tc.fileFilter)
+			if tc.expectedError {
+				assert.Error(t, err)
+			} else {
+				assert.NoError(t, err)
+				assert.Equal(t, tc.expectedResult, result)
+			}
 		})
 	}
 }

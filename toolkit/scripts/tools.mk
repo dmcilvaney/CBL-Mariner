@@ -88,7 +88,9 @@ $(foreach tool,$(go_tool_targets),$(eval $(go_util_rule)))
 go-tools: $(go_tool_targets)
 
 clean: clean-go-tools
-clean-go-tools:
+clean-go-tools-test-mounts:
+	$(SCRIPTS_DIR)/safeunmount.sh "$(TOOLS_DIR)"
+clean-go-tools: clean-go-tools-test-mounts
 	rm -rf $(TOOL_BINS_DIR)
 	rm -rf $(BUILD_DIR)/tools
 

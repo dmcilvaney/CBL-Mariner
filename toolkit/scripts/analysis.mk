@@ -105,16 +105,17 @@ clean-code-search:
 
 code-search: $(code_search_results_file)
 $(code_search_results_file): clean-code-search $(go-codesearch) $(chroot_worker) $(srpms) $(BUILD_SRPMS_DIR)
-	@mkdir -p "$(code_search_build_dir)"
+	mkdir -p "$(code_search_build_dir)" && \
 	$(go-codesearch) \
 		--srpm-dir="$(BUILD_SRPMS_DIR)" \
-		--search-regex=$(SEARCH_REGEX)" \
+		--search-regex="$(SEARCH_REGEX)" \
+		--file-filter="$(SEARCH_FILE_FILTER)" \
 		--build-dir="$(code_search_build_dir)" \
-		--dist-tag=$(DIST_TAG) \
+		--dist-tag="$(DIST_TAG)" \
 		--worker-tar="$(chroot_worker)" \
-		--log-level=$(LOG_LEVEL) \
+		--log-level="$(LOG_LEVEL)" \
 		--log-file="$(code_search_logs_path)" \
 		--log-color="$(LOG_COLOR)" \
 		--search-result-file="$(code_search_results_file)" \
-		$(if $(SRPM_PACK_LIST),--spec-list=$(srpm_pack_list_file)) && \
+		$(if $(SRPM_PACK_LIST),--spec-list="$(srpm_pack_list_file)") && \
 	echo "Code search completed successfully, results are in $(code_search_results_file)"

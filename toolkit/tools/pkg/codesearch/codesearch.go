@@ -11,6 +11,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"runtime"
 	"sort"
 	"strings"
@@ -211,7 +212,7 @@ func (s *CodeSearch) CleanUp() error {
 }
 
 // GenerateSnapshot generates a snapshot of all packages built from the specs inside the input directory.
-func (s *CodeSearch) SearchCode(regex, distTag string, packageSearchSet map[string]bool) error {
+func (s *CodeSearch) SearchCode(regex, fileFilter, distTag string, packageSearchSet map[string]bool) error {
 	if s.simpleToolChroot == (simpletoolchroot.SimpleToolChroot{}) {
 		return fmt.Errorf("chroot has not been initialized")
 	}
@@ -219,7 +220,7 @@ func (s *CodeSearch) SearchCode(regex, distTag string, packageSearchSet map[stri
 	s.results = []SrpmSearchResult{}
 
 	err := s.simpleToolChroot.RunInChroot(func() (searchErr error) {
-		s.results, searchErr = s.runSearchInChroot(regex, distTag, packageSearchSet)
+		s.results, searchErr = s.runSearchInChroot(regex, fileFilter, distTag, packageSearchSet)
 		return searchErr
 	})
 	if err != nil {
@@ -250,6 +251,10 @@ func (s *CodeSearch) installPackages(packagesToInstall []string, cancel chan str
 		<-installMutex
 	}()
 
+	if s.allreadyInstalledPackages == nil {
+		s.allreadyInstalledPackages = make(map[string]bool)
+	}
+
 	logger.Log.Infof("Installing packages: %v", packagesToInstall)
 	for _, repoPackage := range packagesToInstall {
 		if s.allreadyInstalledPackages[repoPackage] {
@@ -268,7 +273,7 @@ func (s *CodeSearch) installPackages(packagesToInstall []string, cancel chan str
 	return nil
 }
 
-func (s *CodeSearch) runSearchInChroot(regex, distTag string, packageSearchSet map[string]bool) (results []SrpmSearchResult, err error) {
+func (s *CodeSearch) runSearchInChroot(regex, fileFilter, distTag string, packageSearchSet map[string]bool) (results []SrpmSearchResult, err error) {
 	const searchReportIntervalPercent = 10
 
 	logger.Log.Infof("Searching for srpms in %s", s.simpleToolChroot.ChrootRelativeMountDir())
@@ -294,7 +299,7 @@ func (s *CodeSearch) runSearchInChroot(regex, distTag string, packageSearchSet m
 	// Search each srpm in parallel
 	resultsChannel := make(chan SrpmSearchResult, len(srpmsToSearchPaths))
 	cancel := make(chan struct{})
-	s.queueWorkers(srpmsToSearchPaths, packageSearchSet, regex, distTag, resultsChannel, cancel)
+	s.queueWorkers(srpmsToSearchPaths, packageSearchSet, regex, fileFilter, distTag, resultsChannel, cancel)
 
 	// Wait for all the workers to finish, updating the progress as results come in
 	numProcessed := 0
@@ -344,7 +349,7 @@ func (s *CodeSearch) findSrpmPaths() (foundSrpmPaths []string, err error) {
 	return foundSrpmPaths, nil
 }
 
-func (s *CodeSearch) queueWorkers(srpmsToSearchPaths []string, packageSearchSet map[string]bool, regex, distTag string, resultsChannel chan SrpmSearchResult, cancel chan struct{}) {
+func (s *CodeSearch) queueWorkers(srpmsToSearchPaths []string, packageSearchSet map[string]bool, regex, fileFilter, distTag string, resultsChannel chan SrpmSearchResult, cancel chan struct{}) {
 	for _, srpmPath := range srpmsToSearchPaths {
 		// skip anything that is alphabetically before "heimdal"
 		name, _ := rpm.ExtractNameFromRPMPath(srpmPath)
@@ -382,7 +387,7 @@ func (s *CodeSearch) queueWorkers(srpmsToSearchPaths []string, packageSearchSet 
 				return
 			default:
 			}
-			searchResult, err := s.searchSrpm(srpmPath, topDir, regex)
+			searchResult, err := s.searchSrpm(srpmPath, topDir, regex, fileFilter)
 			if err != nil {
 				logger.Log.Errorf("Worker failed with error: %v", err)
 				resultsChannel <- SrpmSearchResult{err: err}
@@ -485,7 +490,15 @@ func (s *CodeSearch) cleanupSrpm(topDir string) error {
 	return nil
 }
 
-func (s *CodeSearch) searchSrpm(srpmPath, topDir, regex string) (result SrpmSearchResult, err error) {
+// matchesFileFilter returns true if the file matches the file filter regex, if any.
+func matchesFileFilter(fileFilter, file string) (bool, error) {
+	if fileFilter == "" {
+		return true, nil
+	}
+	return regexp.MatchString(fileFilter, file)
+}
+
+func (s *CodeSearch) searchSrpm(srpmPath, topDir, regex, fileFilter string) (result SrpmSearchResult, err error) {
 	logger.Log.Debugf("Searching (%s)", filepath.Base(srpmPath))
 	grepOutput, stderr, err := shell.ExecuteInDirectory(topDir, "grep", "-rinP", regex, ".")
 	if err != nil {
@@ -520,7 +533,16 @@ func (s *CodeSearch) searchSrpm(srpmPath, topDir, regex string) (result SrpmSear
 		file := parts[0]
 		line := parts[1]
 		match := parts[2]
-		matches[file] = append(matches[file], fmt.Sprintf("%s:%s", line, match))
+
+		// Check if the file matches the file filter, if any.
+		matchesFilter, err := matchesFileFilter(fileFilter, file)
+		if err != nil {
+			err = fmt.Errorf("failed to match file filter. Error:\n%w", err)
+			return SrpmSearchResult{}, err
+		}
+		if matchesFilter {
+			matches[file] = append(matches[file], fmt.Sprintf("%s:%s", line, match))
+		}
 	}
 
 	logger.Log.Infof(color.GreenString("Found %d matches in %s", len(matches), srpmPath))

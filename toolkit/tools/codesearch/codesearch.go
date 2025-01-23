@@ -21,6 +21,7 @@ var (
 
 	srpmDir     = app.Flag("srpm-dir", "The output directory for source RPM packages").Required().String()
 	searchRegex = app.Flag("search-regex", "The regex to search for in the spec files.").Required().String()
+	fileFilter  = app.Flag("file-filter", "The file filter regex to apply to the search.").Default("").String()
 
 	buildDirPath = app.Flag("build-dir", "Directory to store temporary files.").Required().String()
 	distTag      = app.Flag("dist-tag", "The distribution tag.").Required().String()
@@ -74,7 +75,7 @@ func main() {
 	}()
 
 	logger.Log.Infof("Searching SRPMS for regex '%s'...", *searchRegex)
-	err = codeSearch.SearchCode(*searchRegex, *distTag, packageListSet)
+	err = codeSearch.SearchCode(*searchRegex, *fileFilter, *distTag, packageListSet)
 	if err != nil {
 		logger.Log.Fatalf("Failed to generate snapshot. Error: %v", err)
 	}
