@@ -1,0 +1,28 @@
+# Stub workflow — lives on the default branch (3.0) to handle pull_request_target events.
+# Delegates all real work to the reusable template on tomls/base/main, which has the
+# scripts, prompts, and agent definitions.
+#
+# This two-stage design lets fork PRs trigger the review safely: the stub runs in the
+# context of the default branch (with secret access), but the template checks out only
+# .spec files (data) from the PR head — never executable code.
+name: Spec Review
+
+on:
+  pull_request_target:
+    paths:
+      - '**/*.spec'
+
+concurrency:
+  group: spec-review-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    uses: microsoft/azurelinux/.github/workflows/spec-review-template.yml@tomls/base/main
+    with:
+      pr-head-sha: ${{ github.event.pull_request.head.sha }}
+      pr-head-repo: ${{ github.event.pull_request.head.repo.full_name }}
+      pr-number: ${{ github.event.pull_request.number }}
+      repo: ${{ github.repository }}
+    secrets:
+      COPILOT_TOKEN: ${{ secrets.COPILOT_TOKEN }}
