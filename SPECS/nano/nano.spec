@@ -25,6 +25,7 @@ Lang for nano
 
 %prep
 %autosetup -p1
+#TEST TEST TEST
 
 %build
 %configure  --enable-utf8     \
