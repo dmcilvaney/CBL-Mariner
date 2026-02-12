@@ -1,7 +1,7 @@
 Summary:        Text editor
 Name:           nano
 Version:        6.4
-Release:        2%{?dist}
+Release:        9999%{?dist}
 License:        GPLv3+
 Vendor:         Microsoft Corporation
 Distribution:   Azure Linux
@@ -11,6 +11,7 @@ Source0:        http://www.nano-editor.org/dist/v6/%{name}-%{version}.tar.xz
 Patch0:		CVE-2024-5742.patch
 
 BuildRequires:  ncurses-devel
+BuildRequires:  /bin/sh
 Requires:       ncurses
 
 %description

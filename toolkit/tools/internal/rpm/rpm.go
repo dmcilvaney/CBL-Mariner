@@ -781,6 +781,35 @@ func StripEpochFromPackageFullQualifiedName(packageFQN string) string {
 	return packageFQNBuilder.String()
 }
 
+// hashPrefixRegex matches a leading hex hash prefix followed by a dash that some package
+// servers prepend to RPM filenames (e.g., "d9e673-bash-5.2.15-3.azl3.x86_64.rpm").
+var hashPrefixRegex = regexp.MustCompile(`^[0-9a-fA-F]+-`)
+
+// NormalizeRPMFileName strips any server-added hash prefix from an RPM filename or path
+// basename and returns the canonical RPM name. If no prefix is detected, the input is
+// returned unchanged.
+//
+// Examples:
+//
+//	"d9e673-bash-5.2.15-3.azl3.x86_64.rpm" -> "bash-5.2.15-3.azl3.x86_64.rpm"
+//	"bash-5.2.15-3.azl3.x86_64.rpm"        -> "bash-5.2.15-3.azl3.x86_64.rpm"
+//	"96d5db-systemd-rpm-macros-255-25.azl3.noarch.rpm" -> "systemd-rpm-macros-255-25.azl3.noarch.rpm"
+func NormalizeRPMFileName(fileName string) string {
+	// If the filename already parses as a valid RPM NEVRA, no normalization needed.
+	if packageFQNRegex.MatchString(fileName) {
+		return fileName
+	}
+
+	// Try stripping a leading hex prefix (e.g., "d9e673-") and check again.
+	stripped := hashPrefixRegex.ReplaceAllString(fileName, "")
+	if stripped != fileName && packageFQNRegex.MatchString(stripped) {
+		return stripped
+	}
+
+	// Can't normalize — return as-is.
+	return fileName
+}
+
 // TestRPMFromSRPM builds an RPM from the given SRPM and runs its '%check' section SRPM file
 // but it does not generate any RPM packages.
 func TestRPMFromSRPM(srpmFile, outArch string, defines map[string]string) (err error) {

@@ -208,6 +208,77 @@ func TestExtractNameFromRPMPath(t *testing.T) {
 	}
 }
 
+// func TestNormalizeRPMFileName(t *testing.T) {
+// 	tests := []struct {
+// 		name     string
+// 		input    string
+// 		expected string
+// 	}{
+// 		{
+// 			name:     "already canonical filename",
+// 			input:    "bash-5.2.15-3.azl3.x86_64.rpm",
+// 			expected: "bash-5.2.15-3.azl3.x86_64.rpm",
+// 		},
+// 		{
+// 			name:     "hash-prefixed filename",
+// 			input:    "d9e673-bash-5.2.15-3.azl3.x86_64.rpm",
+// 			expected: "bash-5.2.15-3.azl3.x86_64.rpm",
+// 		},
+// 		{
+// 			name:     "hash-prefixed complex package name",
+// 			input:    "96d5db-systemd-rpm-macros-255-25.azl3.noarch.rpm",
+// 			expected: "systemd-rpm-macros-255-25.azl3.noarch.rpm",
+// 		},
+// 		{
+// 			name:     "hash-prefixed devel package",
+// 			input:    "9a5691-boost-devel-1.83.0-2.azl3.x86_64.rpm",
+// 			expected: "boost-devel-1.83.0-2.azl3.x86_64.rpm",
+// 		},
+// 		{
+// 			name:     "hash-prefixed with short hex",
+// 			input:    "ab-grpc-1.62.3-1.azl3.x86_64.rpm",
+// 			expected: "grpc-1.62.3-1.azl3.x86_64.rpm",
+// 		},
+// 		{
+// 			name:     "canonical name without extension",
+// 			input:    "bash-5.2.15-3.azl3.x86_64",
+// 			expected: "bash-5.2.15-3.azl3.x86_64",
+// 		},
+// 		{
+// 			name:     "hash-prefixed without extension",
+// 			input:    "d9e673-bash-5.2.15-3.azl3.x86_64",
+// 			expected: "bash-5.2.15-3.azl3.x86_64",
+// 		},
+// 		{
+// 			name:     "canonical aarch64 package",
+// 			input:    "glibc-2.38-18.azl3.aarch64.rpm",
+// 			expected: "glibc-2.38-18.azl3.aarch64.rpm",
+// 		},
+// 		{
+// 			name:     "canonical src package",
+// 			input:    "bash-5.2.15-3.azl3.src.rpm",
+// 			expected: "bash-5.2.15-3.azl3.src.rpm",
+// 		},
+// 		{
+// 			name:     "unparseable string returned as-is",
+// 			input:    "garbage",
+// 			expected: "garbage",
+// 		},
+// 		{
+// 			name:     "empty string returned as-is",
+// 			input:    "",
+// 			expected: "",
+// 		},
+// 	}
+
+// 	for _, tt := range tests {
+// 		t.Run(tt.name, func(t *testing.T) {
+// 			result := NormalizeRPMFileName(tt.input)
+// 			assert.Equal(t, tt.expected, result)
+// 		})
+// 	}
+// }
+
 func configureTestDistroMacros(nameAbreviation string, majorVersion int) error {
 	err := checkDistroMacros(nameAbreviation, majorVersion)
 	if err != nil {

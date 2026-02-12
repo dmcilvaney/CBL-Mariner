@@ -65,6 +65,7 @@ type RpmRepoCloner struct {
 	chrootCloneDir           string
 	defaultAzureLinuxRepoIDs []string
 	mountedCloneDir          string
+	normalizedFiles          map[string]bool
 	repoSnapshotTime         string
 	repoSnapshotArgs         []string
 	repoIDCache              string
@@ -85,7 +86,9 @@ func ConstructCloner(destinationDir, tmpDir, workerTar, existingRpmsDir, toolcha
 	timestamp.StartEvent("initialize and configure cloner", nil)
 	defer timestamp.StopEvent(nil) // initialize and configure cloner
 
-	r = &RpmRepoCloner{}
+	r = &RpmRepoCloner{
+		normalizedFiles: make(map[string]bool),
+	}
 	err = r.initialize(destinationDir, tmpDir, workerTar, existingRpmsDir, toolchainRpmsDir, repoDefinitions, posixTime)
 	if err != nil {
 		err = fmt.Errorf("failed to prep new rpm cloner:\n%w", err)
@@ -441,6 +444,15 @@ func (r *RpmRepoCloner) cloneRawPackageNames(cloneDeps, singleTransaction bool, 
 		}
 	}
 
+	// Normalize any hash-prefixed RPM filenames that the package server may have
+	// prepended during download. This ensures downstream path lookups using canonical
+	// NVRA-based names will find the files.
+	// err = r.NormalizeDownloadedPackages()
+	// if err != nil {
+	// 	logger.Log.Warnf("Failed to normalize RPM filenames: %s", err)
+	// 	err = nil
+	// }
+
 	return
 }
 
@@ -616,6 +628,13 @@ func (r *RpmRepoCloner) ClonedRepoContents() (repoContents *repocloner.RepoConte
 // CloneDirectory returns the directory where cloned packages are saved.
 func (r *RpmRepoCloner) CloneDirectory() string {
 	return r.mountedCloneDir
+}
+
+// NormalizeDownloadedPackages renames any hash-prefixed RPM filenames in the
+// clone directory to their canonical names. Only newly downloaded files are
+// checked (files already processed are tracked and skipped).
+func (r *RpmRepoCloner) NormalizeDownloadedPackages() error {
+	return rpmrepomanager.NormalizeRpmFilenames(r.mountedCloneDir, r.normalizedFiles)
 }
 
 // Close closes the given RpmRepoCloner.

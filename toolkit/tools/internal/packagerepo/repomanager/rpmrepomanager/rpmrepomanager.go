@@ -11,6 +11,7 @@ import (
 
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/logger"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/packagerepo/repoutils"
+	"github.com/microsoft/azurelinux/toolkit/tools/internal/rpm"
 	"github.com/microsoft/azurelinux/toolkit/tools/internal/shell"
 )
 
@@ -64,6 +65,43 @@ func CreateOrUpdateRepo(repoDir string) (err error) {
 	_, stderr, err := shell.Execute(createRepoCmd, "--compatibility", "--update", repoDir)
 	if err != nil {
 		logger.Log.Warn(stderr)
+	}
+
+	return
+}
+
+// NormalizeRpmFilenames scans the given directory for RPM files whose on-disk filenames
+// don't match their canonical names (e.g., due to hash prefixes added by a package server).
+// Mismatched files are renamed to their canonical names. The alreadyNormalized map is used
+// to skip files that have already been checked in previous calls.
+func NormalizeRpmFilenames(repoDir string, alreadyNormalized map[string]bool) (err error) {
+	rpmSearch := filepath.Join(repoDir, "*.rpm")
+	rpmFiles, err := filepath.Glob(rpmSearch)
+	if err != nil {
+		return
+	}
+
+	for _, rpmFile := range rpmFiles {
+		baseName := filepath.Base(rpmFile)
+		if alreadyNormalized[baseName] {
+			continue
+		}
+
+		canonicalName := rpm.NormalizeRPMFileName(baseName)
+		if canonicalName == baseName {
+			alreadyNormalized[baseName] = true
+			continue
+		}
+
+		canonicalPath := filepath.Join(repoDir, canonicalName)
+		logger.Log.Warnf("Normalizing hash-prefixed RPM filename: '%s' -> '%s'", baseName, canonicalName)
+		err = os.Rename(rpmFile, canonicalPath)
+		if err != nil {
+			err = fmt.Errorf("failed to rename '%s' to '%s':\n%w", baseName, canonicalName, err)
+			return
+		}
+
+		alreadyNormalized[canonicalName] = true
 	}
 
 	return
