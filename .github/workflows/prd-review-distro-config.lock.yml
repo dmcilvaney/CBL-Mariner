@@ -19,15 +19,15 @@
 #   gh aw compile
 # For more information: https://github.com/github/gh-aw/blob/main/.github/aw/github-agentic-workflows.md
 #
-# Reviews PR changes against the Agent Instructions PRD and flags anything that contradicts the PRD's design decisions, principles, or requirements.
+# Reviews PR changes against the Distro Config Layout PRD and flags anything that contradicts the PRD's design decisions, principles, or requirements.
 #
 # Resolved workflow manifest:
 #   Imports:
 #     - shared/prd-review.md
 #
-# frontmatter-hash: b07e68a541023c281792e05a07ccfc6fd61a26f52ede79129cedde049f8b0ed6
+# frontmatter-hash: b09c6d9109786e93ff3e21778f933607ee3a533e0f5dd175bfd11b0c3d801833
 
-name: "PRD Review: Agent Instructions"
+name: "PRD Review: Distro Config Layout"
 "on":
   pull_request:
     types:
@@ -42,7 +42,7 @@ concurrency:
   group: "gh-aw-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}"
   cancel-in-progress: true
 
-run-name: "PRD Review: Agent Instructions"
+run-name: "PRD Review: Distro Config Layout"
 
 jobs:
   activation:
@@ -63,7 +63,7 @@ jobs:
       - name: Check workflow file timestamps
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          GH_AW_WORKFLOW_FILE: "prd-review-agent-instructions.lock.yml"
+          GH_AW_WORKFLOW_FILE: "prd-review-distro-config.lock.yml"
         with:
           script: |
             const { setupGlobals } = require('/opt/gh-aw/actions/setup_globals.cjs');
@@ -144,7 +144,7 @@ jobs:
               version: "",
               agent_version: "0.0.409",
               cli_version: "v0.43.20",
-              workflow_name: "PRD Review: Agent Instructions",
+              workflow_name: "PRD Review: Distro Config Layout",
               experimental: false,
               supports_tools_allowlist: true,
               supports_http_transport: true,
@@ -529,7 +529,7 @@ jobs:
           {{#runtime-import .github/workflows/shared/prd-review.md}}
           GH_AW_PROMPT_EOF
           cat << 'GH_AW_PROMPT_EOF' >> "$GH_AW_PROMPT"
-          {{#runtime-import .github/workflows/prd-review-agent-instructions.md}}
+          {{#runtime-import .github/workflows/prd-review-distro-config.md}}
           GH_AW_PROMPT_EOF
       - name: Substitute placeholders
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
@@ -774,7 +774,7 @@ jobs:
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
           GH_AW_NOOP_MAX: 1
-          GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+          GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -787,7 +787,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+          GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
         with:
           github-token: ${{ secrets.GH_AW_GITHUB_TOKEN || secrets.GITHUB_TOKEN }}
           script: |
@@ -800,10 +800,10 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+          GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
-          GH_AW_WORKFLOW_ID: "prd-review-agent-instructions"
+          GH_AW_WORKFLOW_ID: "prd-review-distro-config"
           GH_AW_SECRET_VERIFICATION_RESULT: ${{ needs.agent.outputs.secret_verification_result }}
           GH_AW_CHECKOUT_PR_SUCCESS: ${{ needs.agent.outputs.checkout_pr_success }}
         with:
@@ -818,7 +818,7 @@ jobs:
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
           GH_AW_AGENT_OUTPUT: ${{ env.GH_AW_AGENT_OUTPUT }}
-          GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+          GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
           GH_AW_NOOP_MESSAGE: ${{ steps.noop.outputs.noop_message }}
@@ -838,7 +838,7 @@ jobs:
           GH_AW_COMMENT_ID: ${{ needs.activation.outputs.comment_id }}
           GH_AW_COMMENT_REPO: ${{ needs.activation.outputs.comment_repo }}
           GH_AW_RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+          GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
           GH_AW_AGENT_CONCLUSION: ${{ needs.agent.result }}
           GH_AW_DETECTION_CONCLUSION: ${{ needs.detection.result }}
         with:
@@ -882,8 +882,8 @@ jobs:
       - name: Setup threat detection
         uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
         env:
-          WORKFLOW_NAME: "PRD Review: Agent Instructions"
-          WORKFLOW_DESCRIPTION: "Reviews PR changes against the Agent Instructions PRD and flags anything that contradicts the PRD's design decisions, principles, or requirements."
+          WORKFLOW_NAME: "PRD Review: Distro Config Layout"
+          WORKFLOW_DESCRIPTION: "Reviews PR changes against the Distro Config Layout PRD and flags anything that contradicts the PRD's design decisions, principles, or requirements."
           HAS_PATCH: ${{ needs.agent.outputs.has_patch }}
         with:
           script: |
@@ -985,8 +985,8 @@ jobs:
     env:
       GH_AW_ENGINE_ID: "copilot"
       GH_AW_ENGINE_MODEL: "claude-opus-4.6"
-      GH_AW_WORKFLOW_ID: "prd-review-agent-instructions"
-      GH_AW_WORKFLOW_NAME: "PRD Review: Agent Instructions"
+      GH_AW_WORKFLOW_ID: "prd-review-distro-config"
+      GH_AW_WORKFLOW_NAME: "PRD Review: Distro Config Layout"
     outputs:
       create_discussion_error_count: ${{ steps.process_safe_outputs.outputs.create_discussion_error_count }}
       create_discussion_errors: ${{ steps.process_safe_outputs.outputs.create_discussion_errors }}
