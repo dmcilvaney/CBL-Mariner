@@ -1,0 +1,42 @@
+[components.edk2]
+
+# WIP: edk2 build failure — Fedora/RHEL macro conflict
+# Koji task: https://52.249.25.247/koji/taskinfo?taskID=31525
+#
+# Problem:
+#   AZL builds in a Fedora mock chroot (%fedora defined) but also sets %rhel=10.
+#   The edk2 spec assumes these are mutually exclusive. Result:
+#     - %build takes RHEL path (checked first) → uses edk2-build.rhel-10
+#     - %files/%install also activates %if %{defined fedora} blocks → expects files the RHEL build never produced
+#   On aarch64: "File not found: .../QEMU_EFI.kernel.fd"
+#   On x86_64: would also fail for MICROVM.fd, OVMF.igvm, OVMF.stateless.fd, *.pcrlock, etc.
+#     (only didn't fail because aarch64 failed first and the parent task canceled x86_64)
+#
+# Options considered:
+#   A) %undefine fedora (current overlay below)
+#      + Simplest fix, clean RHEL path, everything consistent
+#      - Loses IGVM, pcrlock, stateless, microvm, kernel.fd, 4M qcow2 images
+#      - IGVM and pcrlock are relevant for Kata confidential containers
+#
+#   B) %undefine rhel instead → full Fedora build path
+#      + Produces everything: IGVM, pcrlock, stateless, kernel.fd
+#      + Upstream-maintained, well-tested
+#      - Pulls in extra subpackages (ovmf-xen, riscv64, loongarch64, ext4, tools-python)
+#      - Needs virt-firmware-rs and cross-compiler BuildRequires
+#      - Need to verify all BuildRequires are available in the build tag
+#
+#   C) %undefine fedora + surgical overlays to add back IGVM + pcrlock to RHEL path
+#      + Minimal output, lean build
+#      - Complex custom overlays touching build logic, fragile across upstream updates
+#
+# Decision: PENDING — need definitive directive for handling fedora/rhel macro conflicts.
+#   Key question: do we want IGVM and pcrlock files for Kata CoCo use cases?
+#   If yes, Option B is probably the path of least resistance.
+
+# Temporary fix (Option A) — %undefine fedora to unblock the build.
+# Replace with the chosen approach once the fedora/rhel strategy is decided.
+[[components.edk2.overlays]]
+description = "WIP: Undefine %fedora so the spec follows RHEL code paths — Azure Linux defines %rhel but the Fedora mock chroot also defines %fedora, causing mismatched %build/%files conditionals"
+type = "spec-search-replace"
+regex = '%define silent --silent'
+replacement = "%define silent --silent\n\n%undefine fedora"

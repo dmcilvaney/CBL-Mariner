@@ -501,7 +501,6 @@
 [components.ebook-tools]
 [components.ebtables]
 [components.ed25519-java]
-[components.edk2]
 [components.efl]
 [components.egl-wayland]
 [components.eglexternalplatform]
