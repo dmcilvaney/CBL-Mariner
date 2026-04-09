@@ -1,7 +1,7 @@
 # This spec file has been modified by azldev to include build configuration overlays.
 # Do not edit manually; changes may be overwritten.
 
-Summary: Access control list utilities
+Summary: PATCHED
 Name: acl
 Version: 2.3.2
 Release: 5%{?dist}
@@ -32,7 +32,7 @@ This package contains the getfacl and setfacl utilities needed for
 manipulating access control lists.
 
 %package -n libacl
-Summary: Dynamic library for access control list support
+Summary: PATCHED
 License: LGPL-2.1-or-later
 Conflicts: filesystem < 3
 
@@ -42,7 +42,7 @@ the POSIX 1003.1e draft standard 17 functions for manipulating access
 control lists.
 
 %package -n libacl-devel
-Summary: Files needed for building programs with libacl
+Summary: PATCHED
 License: LGPL-2.1-or-later
 Requires: libacl%{?_isa} = %{version}-%{release}, libattr-devel
 

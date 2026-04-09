@@ -1,0 +1,100 @@
+name: Check Rendered Specs
+
+on:
+  pull_request:
+    branches:
+      - tomls/base/main
+
+permissions: {}
+
+concurrency:
+  group: render-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    name: Rendered specs freshness
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pull-requests: write # Post/update/delete drift comments on PRs
+    steps:
+      - name: Checkout
+        uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@d35c59abb061a4a6fb18e82ac0862c26744d6ab5 # v5.5.0
+        with:
+          go-version: "stable"
+
+      - name: Install azldev
+        run: go install github.com/microsoft/azure-linux-dev-tools/cmd/azldev@main
+
+      - name: Set up Python
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5
+        with:
+          python-version: "3.12"
+
+      - name: Build render container
+        run: |
+          docker build \
+            --build-arg UID=$(id -u) \
+            -t azldev-render \
+            -f .github/workflows/containers/render.Dockerfile \
+            .github/workflows/containers/
+
+      - name: Render specs
+        env:
+          WORKSPACE: ${{ github.workspace }}
+        run: |
+          set -o pipefail
+          docker run --privileged --rm \
+            -v "$WORKSPACE:/workdir" \
+            -v "$(go env GOPATH)/bin:/gobin:ro" \
+            -e PATH="/gobin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
+            azldev-render \
+            azldev component render -q -a --clean-stale -O json \
+            | tee render-output.json
+
+      - name: Resolve specs directory
+        id: specs-dir
+        run: |
+          SPECS_DIR=$(azldev config dump -q | grep 'rendered-specs-dir' | cut -d"'" -f2)
+          echo "path=$SPECS_DIR" >> "$GITHUB_OUTPUT"
+
+      - name: Check for drift
+        id: check
+        continue-on-error: true # Non-blocking while the feature stabilizes
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR_REPO: ${{ github.repository }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          SPECS_DIR: ${{ steps.specs-dir.outputs.path }}
+          ARTIFACTS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          python .github/workflows/scripts/check_rendered_specs.py \
+            --specs-dir "$SPECS_DIR" \
+            --repo "$PR_REPO" \
+            --pr "$PR_NUMBER" \
+            --report render-check-report.json \
+            --patch rendered-specs.patch \
+            --artifacts-url "$ARTIFACTS_URL"
+
+      - name: Upload render output
+        if: always()
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          name: render-output
+          path: |
+            render-output.json
+            render-check-report.json
+
+      - name: Upload fix patch
+        if: hashFiles('rendered-specs.patch') != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          path: rendered-specs.patch
+          archive: false
