@@ -7,7 +7,7 @@
 
 Name:               python-cairosvg
 Version:            2.7.1
-Release:            5%{?dist}
+Release: 6%{?dist}
 Summary:            A Simple SVG Converter for Cairo
 
 License:            LGPL-3.0-or-later

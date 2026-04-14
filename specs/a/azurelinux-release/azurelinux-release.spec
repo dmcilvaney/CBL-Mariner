@@ -39,7 +39,7 @@ Summary:        Azure Linux release files
 Name:           azurelinux-release
 Version:        4.0
 # TODO(azl): Review whether we can move back to autorelease (with conditional -p)
-Release:        2%{?dist}
+Release: 6%{?dist}
 License:        MIT
 URL:            https://aka.ms/azurelinux
 
@@ -52,6 +52,9 @@ Source14:       distro-template.swidtag
 Source15:       distro-variant-template.swidtag
 Source16:       20-azurelinux-defaults.conf
 Source17:       20-azure.conf
+Source18:       proc-version-override.service
+Source19:       proc-version-override.sh
+Source20:       chrony-azure.conf
 
 BuildArch:      noarch
 
@@ -284,6 +287,7 @@ NAME="%{dist_name}"
 VERSION="%{dist_version} (%{release_name}%{?prerelease})"
 RELEASE_TYPE=development
 ID=azurelinux
+ID_LIKE=fedora
 VERSION_ID=%{dist_version}
 VERSION_CODENAME=""
 PRETTY_NAME="Azure Linux %{dist_version} (%{release_name}%{?prerelease})"
@@ -332,6 +336,7 @@ sed -i -e "s|(%{release_name}%{?prerelease})|(Cloud Variant%{?prerelease})|g" %{
 sed -e "s#\$version#%{bug_version}#g" -e 's/$variant/Cloud/;s/<!--.*-->//;/^$/d' %{SOURCE15} > %{buildroot}%{_swidtagdir}/com.microsoft.AzureLinux-variant.swidtag.cloud
 sed -i -e "/^DEFAULT_HOSTNAME=/d" %{buildroot}%{_prefix}/lib/os-release.cloud
 install -Dm0644 %{SOURCE17} -t %{buildroot}%{_prefix}/lib/sysctl.d/
+install -Dm0644 %{SOURCE20} -t %{buildroot}%{_sysconfdir}/chrony.d/
 %endif
 
 %if %{with container}
@@ -394,6 +399,10 @@ ln -s --relative %{buildroot}%{_swidtagdir} %{buildroot}%{_sysconfdir}/swid/swid
 # Install DNF 5 configuration defaults
 install -Dm0644 %{SOURCE16} -t %{buildroot}%{_prefix}/share/dnf5/libdnf.conf.d/
 
+# Install proc-version-override (backward-compat for tools that grep /proc/version for "Mariner")
+install -Dm0644 %{SOURCE18} -t %{buildroot}%{_unitdir}/
+install -Dm0755 %{SOURCE19} %{buildroot}%{_libexecdir}/proc-version-override
+
 
 %files common
 %license licenses/LICENSE
@@ -422,6 +431,8 @@ install -Dm0644 %{SOURCE16} -t %{buildroot}%{_prefix}/share/dnf5/libdnf.conf.d/
 %dir %{_sysconfdir}/swid
 %{_sysconfdir}/swid/swidtags.d
 %{_prefix}/share/dnf5/libdnf.conf.d/20-azurelinux-defaults.conf
+%{_unitdir}/proc-version-override.service
+%{_libexecdir}/proc-version-override
 
 
 %if %{with basic}
@@ -437,6 +448,7 @@ install -Dm0644 %{SOURCE16} -t %{buildroot}%{_prefix}/share/dnf5/libdnf.conf.d/
 %{_prefix}/lib/os-release.cloud
 %attr(0644,root,root) %{_swidtagdir}/com.microsoft.AzureLinux-variant.swidtag.cloud
 %{_prefix}/lib/sysctl.d/20-azure.conf
+%{_sysconfdir}/chrony.d/chrony-azure.conf
 %endif
 
 
@@ -458,5 +470,14 @@ install -Dm0644 %{SOURCE16} -t %{buildroot}%{_prefix}/share/dnf5/libdnf.conf.d/
 
 
 %changelog
+* Thu Apr 09 2026 Reuben Olinsky <reubeno@microsoft.com> - 4.0-5
+- Add ID_LIKE tag to os-release.
+
+* Wed Apr 08 2026 Dan Streetman <ddstreet@ieee.org> - 4.0-4
+- Configure chrony to use Azure PTP timesource
+
+* Tue Apr 01 2026 Rachel Menge <rachelmenge@microsoft.com> - 4.0-3
+- Add proc-version-override service for Guest-Configuration-Extension compat
+
 * Fri Feb 27 2026 Reuben Olinsky <reubeno@microsoft.com> - 4.0-2
 - Initial version
