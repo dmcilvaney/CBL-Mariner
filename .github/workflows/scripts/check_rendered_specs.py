@@ -275,7 +275,7 @@ def format_comment(
         if run_id and repo:
             lines.append(
                 "```bash\n"
-                f"gh run download {run_id} -R {repo} -n rendered-specs.patch\n"
+                f"gh run download {run_id} -R {repo} -n rendered-specs-patch\n"
                 "git apply rendered-specs.patch\n"
                 "```"
             )
