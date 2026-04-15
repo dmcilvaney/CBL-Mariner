@@ -222,7 +222,12 @@ def _render_command(components: list[str], use_all: bool = False) -> str:
     return f"azldev component render {' '.join(components)}"
 
 
-def format_comment(report: dict, artifacts_url: str | None = None) -> str:
+def format_comment(
+    report: dict,
+    artifacts_url: str | None = None,
+    run_id: str | None = None,
+    repo: str | None = None,
+) -> str:
     content_diffs = report.get("content_diffs", [])
     extra_files = report.get("extra_files", [])
     missing_files = report.get("missing_files", [])
@@ -267,7 +272,15 @@ def format_comment(report: dict, artifacts_url: str | None = None) -> str:
     if artifacts_url:
         lines.append(f"Or [download the fix patch]({artifacts_url}) and apply it:")
         lines.append("")
-        lines.append("```bash\ngit apply rendered-specs.patch\n```")
+        if run_id and repo:
+            lines.append(
+                "```bash\n"
+                f"gh run download {run_id} -R {repo} -n rendered-specs.patch\n"
+                "git apply rendered-specs.patch\n"
+                "```"
+            )
+        else:
+            lines.append("```bash\ngit apply rendered-specs.patch\n```")
         lines.append("")
 
     lines.extend(
@@ -541,6 +554,11 @@ def main() -> int:
         default=None,
         help="URL to the workflow run artifacts (linked in PR comment)",
     )
+    parser.add_argument(
+        "--run-id",
+        default=None,
+        help="GitHub Actions run ID (for gh run download command in PR comment)",
+    )
     args = parser.parse_args()
 
     if bool(args.repo) != bool(args.pr):
@@ -584,7 +602,12 @@ def main() -> int:
             if total == 0:
                 delete_comment_if_exists(args.repo, args.pr)
             else:
-                body = format_comment(report, artifacts_url=args.artifacts_url)
+                body = format_comment(
+                    report,
+                    artifacts_url=args.artifacts_url,
+                    run_id=args.run_id,
+                    repo=args.repo,
+                )
                 post_or_update_comment(args.repo, args.pr, body)
         except (subprocess.CalledProcessError, OSError) as exc:
             print(f"Warning: failed to post/update PR comment: {exc}", file=sys.stderr)
@@ -592,7 +615,9 @@ def main() -> int:
     # 5. Write to GitHub step summary if available
     summary_file = os.environ.get("GITHUB_STEP_SUMMARY")
     if summary_file and total > 0:
-        summary_body = format_comment(report, artifacts_url=args.artifacts_url)
+        summary_body = format_comment(
+            report, artifacts_url=args.artifacts_url, run_id=args.run_id, repo=args.repo
+        )
         if len(summary_body) <= MAX_STEP_SUMMARY:
             with open(summary_file, "a", encoding="utf-8") as sf:
                 sf.write(summary_body)

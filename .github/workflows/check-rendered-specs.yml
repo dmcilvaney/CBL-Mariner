@@ -93,13 +93,15 @@ jobs:
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SPECS_DIR: ${{ steps.specs-dir.outputs.path }}
           PATCH_URL: ${{ steps.upload-patch.outputs.artifact-url }}
+          RUN_ID: ${{ github.run_id }}
         run: |
           python .github/workflows/scripts/check_rendered_specs.py \
             --specs-dir "$SPECS_DIR" \
             --repo "$PR_REPO" \
             --pr "$PR_NUMBER" \
             --report render-check-report.json \
-            --artifacts-url "$PATCH_URL"
+            --artifacts-url "$PATCH_URL" \
+            --run-id "$RUN_ID"
 
       - name: Upload render output
         if: always()
