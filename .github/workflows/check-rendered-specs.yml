@@ -69,19 +69,37 @@ jobs:
         id: check
         continue-on-error: true # Non-blocking while the feature stabilizes
         env:
+          SPECS_DIR: ${{ steps.specs-dir.outputs.path }}
+        run: |
+          python .github/workflows/scripts/check_rendered_specs.py \
+            --specs-dir "$SPECS_DIR" \
+            --report render-check-report.json \
+            --patch rendered-specs.patch
+
+      - name: Upload fix patch
+        id: upload-patch
+        if: hashFiles('rendered-specs.patch') != ''
+        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
+        with:
+          path: rendered-specs.patch
+          archive: false
+
+      - name: Post PR comment
+        if: always()
+        continue-on-error: true
+        env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           PR_REPO: ${{ github.repository }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
           SPECS_DIR: ${{ steps.specs-dir.outputs.path }}
-          ARTIFACTS_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          PATCH_URL: ${{ steps.upload-patch.outputs.artifact-url }}
         run: |
           python .github/workflows/scripts/check_rendered_specs.py \
             --specs-dir "$SPECS_DIR" \
             --repo "$PR_REPO" \
             --pr "$PR_NUMBER" \
             --report render-check-report.json \
-            --patch rendered-specs.patch \
-            --artifacts-url "$ARTIFACTS_URL"
+            --artifacts-url "$PATCH_URL"
 
       - name: Upload render output
         if: always()
@@ -91,10 +109,3 @@ jobs:
           path: |
             render-output.json
             render-check-report.json
-
-      - name: Upload fix patch
-        if: hashFiles('rendered-specs.patch') != ''
-        uses: actions/upload-artifact@bbbca2ddaa5d8feaa63e36b76fdaad77386f024f # v7
-        with:
-          path: rendered-specs.patch
-          archive: false

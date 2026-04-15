@@ -265,14 +265,9 @@ def format_comment(report: dict, artifacts_url: str | None = None) -> str:
     ]
 
     if artifacts_url:
-        lines.append(
-            "Or download and apply the fix patch from the "
-            f"[workflow artifacts]({artifacts_url}#artifacts):"
-        )
+        lines.append(f"Or [download the fix patch]({artifacts_url}) and apply it:")
         lines.append("")
-        lines.append(
-            "```bash\n# Download 'rendered-specs.patch' from the link above, then:\ngit apply rendered-specs.patch\n```"
-        )
+        lines.append("```bash\ngit apply rendered-specs.patch\n```")
         lines.append("")
 
     lines.extend(
@@ -393,7 +388,12 @@ def generate_patch(
             continue
         lines = text.splitlines(keepends=True)
         n = len(lines)
-        diff_body = "".join(f"+{line}" if line.endswith("\n") else f"+{line}\n\\ No newline at end of file\n" for line in lines)
+        diff_body = "".join(
+            f"+{line}"
+            if line.endswith("\n")
+            else f"+{line}\n\\ No newline at end of file\n"
+            for line in lines
+        )
         parts.append(
             f"diff --git a/{path_str} b/{path_str}\n"
             f"new file mode 100644\n"
@@ -408,7 +408,8 @@ def generate_patch(
         try:
             committed_bytes = subprocess.run(
                 ["git", "show", f"HEAD:{path_str}"],
-                capture_output=True, check=True,
+                capture_output=True,
+                check=True,
             ).stdout
         except subprocess.CalledProcessError:
             continue
@@ -423,7 +424,12 @@ def generate_patch(
             continue
         lines = text.splitlines(keepends=True)
         n = len(lines)
-        diff_body = "".join(f"-{line}" if line.endswith("\n") else f"-{line}\n\\ No newline at end of file\n" for line in lines)
+        diff_body = "".join(
+            f"-{line}"
+            if line.endswith("\n")
+            else f"-{line}\n\\ No newline at end of file\n"
+            for line in lines
+        )
         parts.append(
             f"diff --git a/{path_str} b/{path_str}\n"
             f"deleted file mode 100644\n"
