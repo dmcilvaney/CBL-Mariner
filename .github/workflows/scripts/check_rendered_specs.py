@@ -368,91 +368,42 @@ def generate_patch(
 ) -> str:
     """Generate a git patch covering all detected drift.
 
-    - Modified files: standard git diff
-    - Extra (untracked) files: added via git diff --no-index /dev/null <file>
-    - Missing (deleted) files: removal diffs via diff header with empty content
+    Uses `git add -N` to mark untracked (extra) files as intent-to-add,
+    then runs `git diff` on the specific affected files to capture
+    modified, new, and deleted files in one clean patch.
     """
-    parts: list[str] = []
+    paths = [d["path"] for d in content_diffs] + extra_files + missing_files
+    if not paths:
+        return ""
 
-    # Modified files
-    if content_diffs:
-        paths = [d["path"] for d in content_diffs]
+    # Mark untracked files as intent-to-add so git diff includes them
+    if extra_files:
         try:
-            parts.append(_git("diff", "--", *paths))
+            subprocess.run(
+                ["git", "add", "-N", "--", *extra_files],
+                check=True,
+                capture_output=True,
+            )
         except subprocess.CalledProcessError:
             pass
 
-    # Extra files — generate "new file" diffs
-    for path_str in extra_files:
-        file_path = Path(path_str)
-        try:
-            content = file_path.read_bytes()
-        except (FileNotFoundError, OSError):
-            continue
-        # Check if binary
-        try:
-            text = content.decode("utf-8")
-        except UnicodeDecodeError:
-            parts.append(
-                f"diff --git a/{path_str} b/{path_str}\n"
-                f"new file mode 100644\n"
-                f"Binary files /dev/null and b/{path_str} differ\n"
-            )
-            continue
-        lines = text.splitlines(keepends=True)
-        n = len(lines)
-        diff_body = "".join(
-            f"+{line}"
-            if line.endswith("\n")
-            else f"+{line}\n\\ No newline at end of file\n"
-            for line in lines
-        )
-        parts.append(
-            f"diff --git a/{path_str} b/{path_str}\n"
-            f"new file mode 100644\n"
-            f"--- /dev/null\n"
-            f"+++ b/{path_str}\n"
-            f"@@ -0,0 +1,{n} @@\n"
-            f"{diff_body}"
-        )
+    try:
+        patch = _git("diff", "--", *paths)
+    except subprocess.CalledProcessError:
+        patch = ""
 
-    # Missing files — generate deletion diffs
-    for path_str in missing_files:
+    # Undo the intent-to-add so we don't leave index dirty
+    if extra_files:
         try:
-            committed_bytes = subprocess.run(
-                ["git", "show", f"HEAD:{path_str}"],
-                capture_output=True,
+            subprocess.run(
+                ["git", "reset", "--", *extra_files],
                 check=True,
-            ).stdout
-        except subprocess.CalledProcessError:
-            continue
-        try:
-            text = committed_bytes.decode("utf-8")
-        except UnicodeDecodeError:
-            parts.append(
-                f"diff --git a/{path_str} b/{path_str}\n"
-                f"deleted file mode 100644\n"
-                f"Binary files a/{path_str} and /dev/null differ\n"
+                capture_output=True,
             )
-            continue
-        lines = text.splitlines(keepends=True)
-        n = len(lines)
-        diff_body = "".join(
-            f"-{line}"
-            if line.endswith("\n")
-            else f"-{line}\n\\ No newline at end of file\n"
-            for line in lines
-        )
-        parts.append(
-            f"diff --git a/{path_str} b/{path_str}\n"
-            f"deleted file mode 100644\n"
-            f"--- a/{path_str}\n"
-            f"+++ /dev/null\n"
-            f"@@ -1,{n} +0,0 @@\n"
-            f"{diff_body}"
-        )
+        except subprocess.CalledProcessError:
+            pass
 
-    return "".join(parts)
+    return patch
 
 
 # ---------------------------------------------------------------------------
