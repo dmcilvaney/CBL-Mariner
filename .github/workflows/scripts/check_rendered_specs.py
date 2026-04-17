@@ -143,13 +143,17 @@ def filter_timestamp_noise(changed_files: list[str], specs_dir: Path) -> list[di
             norm_committed = committed
             norm_working = working
 
+        # Equality check on the *normalised* text filters out timestamp-only
+        # drift (the whole point of this function). If the normalised
+        # versions match, skip.
         if norm_committed == norm_working:
             continue
 
+        # Use the original diff for display purposes.
         udiff = "".join(
             difflib.unified_diff(
-                norm_committed.splitlines(keepends=True),
-                norm_working.splitlines(keepends=True),
+                committed.splitlines(keepends=True),
+                working.splitlines(keepends=True),
                 fromfile=f"committed/{path_str}",
                 tofile=f"rendered/{path_str}",
             )
