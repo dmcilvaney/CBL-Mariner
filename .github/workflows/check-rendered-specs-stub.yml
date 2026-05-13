@@ -20,6 +20,8 @@ on: # zizmor: ignore[dangerous-triggers]
   pull_request_target:
     branches:
       - "4.0"
+      # DROP BEFORE MERGE: fork-side test base used by draft test PRs.
+      - testing/tomls/base/main
 
 permissions: {}
 
@@ -29,10 +31,19 @@ concurrency:
 
 jobs:
   check:
-    # Prevent forks from running a stale/vulnerable copy of this stub with Actions enabled
-    if: github.repository == 'microsoft/azurelinux'
-    # Intentionally branch-pinned so the reusable workflow picks up updates automatically.
-    uses: microsoft/azurelinux/.github/workflows/check-rendered-specs.yml@4.0 # zizmor: ignore[unpinned-uses]
+    # Prevent forks from running a stale/vulnerable copy of this stub with Actions enabled.
+    # DROP BEFORE MERGE: dmcilvaney/CBL-Mariner is allowed so the fork
+    # can exercise the full flow end-to-end from a draft PR before
+    # merging. Remove this clause (leave only microsoft/azurelinux)
+    # before merging this stack.
+    if: github.repository == 'microsoft/azurelinux' || github.repository == 'dmcilvaney/CBL-Mariner'
+    # DROP BEFORE MERGE: point at the fork's reusable workflow on the
+    # test-base branch so it (a) carries the scope-render code under
+    # review and (b) carries the fixture commits that produce a
+    # meaningful change set. Restore
+    # `microsoft/azurelinux/.../check-rendered-specs.yml@tomls/base/main`
+    # before merging.
+    uses: dmcilvaney/CBL-Mariner/.github/workflows/check-rendered-specs.yml@testing/tomls/base/main # zizmor: ignore[unpinned-uses]
     permissions:
       contents: read
       pull-requests: write # Post/update/delete drift comments on PRs
