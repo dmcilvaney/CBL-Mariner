@@ -1,3 +1,4 @@
 [components.pacemaker]
 # Release: %{pcmk_release}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

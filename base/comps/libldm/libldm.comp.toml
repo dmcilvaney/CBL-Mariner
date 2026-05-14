@@ -1,3 +1,4 @@
 [components.libldm]
 # Release: 2%{?dist}%{?extra_release}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

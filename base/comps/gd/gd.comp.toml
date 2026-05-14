@@ -1,3 +1,4 @@
 [components.gd]
 # Release: 19%{?prever}%{?short}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

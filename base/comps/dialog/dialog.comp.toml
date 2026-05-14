@@ -1,3 +1,4 @@
 [components.dialog]
 # Release: 55.%{dialogsubversion}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

@@ -1,3 +1,4 @@
 [components.ca-certificates]
 # Release: 1.1%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

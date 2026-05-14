@@ -1,3 +1,4 @@
 [components.rubygem-rspec-support]
 # Release: %{?prever:0.}%{baserelease}%{?prever:.%{prerpmver}}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

@@ -1,3 +1,4 @@
 [components.libXinerama]
 # Release: 9%{?gitdate:.%{gitdate}git%{gitversion}}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

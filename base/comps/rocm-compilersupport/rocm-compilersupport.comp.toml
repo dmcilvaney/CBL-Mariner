@@ -1,3 +1,4 @@
 [components.rocm-compilersupport]
 # Release: 15.rocm%{rocm_version}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

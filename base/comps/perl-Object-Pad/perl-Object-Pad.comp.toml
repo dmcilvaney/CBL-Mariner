@@ -1,3 +1,4 @@
 [components.perl-Object-Pad]
 # Release: 1%{dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

@@ -1,3 +1,4 @@
 [components.ansible-packaging]
 # Release: 18.1%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

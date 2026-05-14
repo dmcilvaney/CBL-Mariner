@@ -1,3 +1,4 @@
 [components.libi2cd]
 # Release: 9%{?candidate:.%{candidate}}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

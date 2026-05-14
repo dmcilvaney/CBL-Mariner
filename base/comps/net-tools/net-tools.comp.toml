@@ -1,3 +1,4 @@
 [components.net-tools]
 # Release: 0.74.%{checkout}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

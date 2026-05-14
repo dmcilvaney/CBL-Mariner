@@ -1,3 +1,4 @@
 [components.python-blivet]
 # Release: 9%{?prerelease}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

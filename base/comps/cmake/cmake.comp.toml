@@ -1,3 +1,4 @@
 [components.cmake]
 # Release: %{baserelease}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

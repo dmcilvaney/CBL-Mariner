@@ -1,3 +1,4 @@
 [components.ncurses]
 # Release: 7.%{revision}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

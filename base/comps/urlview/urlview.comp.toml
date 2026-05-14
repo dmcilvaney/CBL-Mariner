@@ -1,3 +1,4 @@
 [components.urlview]
 # Release: 40.%{gitdate}git%{gitrev}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

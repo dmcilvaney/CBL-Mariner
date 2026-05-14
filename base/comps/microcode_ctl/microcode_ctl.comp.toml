@@ -1,3 +1,4 @@
 [components.microcode_ctl]
 # Release: 71.1%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

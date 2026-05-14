@@ -1,3 +1,4 @@
 [components.perl-XML-Dumper]
 # Release: 52%{dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

@@ -1,3 +1,4 @@
 [components.google-roboto-slab-fonts]
 # Release: 0.26.20150923git%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

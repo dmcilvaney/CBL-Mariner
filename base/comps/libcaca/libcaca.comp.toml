@@ -1,3 +1,4 @@
 [components.libcaca]
 # Release: 0.80.%{beta}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

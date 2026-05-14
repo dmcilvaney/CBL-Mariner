@@ -1,3 +1,4 @@
 [components.netcdf4-python]
 # Release: 7%{?dist}.1
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

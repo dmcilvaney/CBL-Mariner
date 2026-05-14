@@ -1,3 +1,4 @@
 [components.automoc]
 # Release: 0.51.%{?beta_tag}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

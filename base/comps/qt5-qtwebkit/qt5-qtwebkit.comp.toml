@@ -1,3 +1,4 @@
 [components.qt5-qtwebkit]
 # Release: 0.95%{?prerel}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

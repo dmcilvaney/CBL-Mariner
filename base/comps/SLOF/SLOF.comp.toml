@@ -1,3 +1,4 @@
 [components.SLOF]
 # Release: 8.git%{gittagcommit}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

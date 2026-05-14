@@ -1,3 +1,4 @@
 [components.pcre2]
 # Release: %{?rcversion:0.}1%{?rcversion:.%rcversion}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }

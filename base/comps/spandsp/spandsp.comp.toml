@@ -1,3 +1,4 @@
 [components.spandsp]
 # Release: 21%{?pre:.pre%{pre}}%{?dist}
 release = { calculation = "manual" }
+changelog = { calculation = "manual" }
