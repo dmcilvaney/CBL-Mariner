@@ -4,3 +4,7 @@ import-commit = 'f5189db76ed1c27aa62380414138d705479f3635'
 upstream-commit = 'f5189db76ed1c27aa62380414138d705479f3635'
 input-fingerprint = 'sha256:4e18258a5349297a8d32009fbd485de088e80afd89de669a2eea6ca3c30ab51c'
 resolution-input-hash = 'sha256:466421704711c4fd3c71f0b2ed715a0e61d49e3e26f3a2637fee755795849c8e'
+
+[bumps]
+# Migration: static Release 250 -> %autorelease (base 34) at upstream commit f5189db76ed1. Gap = 216.
+f5189db76ed1c27aa62380414138d705479f3635 = 216
