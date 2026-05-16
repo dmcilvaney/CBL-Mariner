@@ -92,8 +92,8 @@ ln -sf linux.words $RPM_BUILD_ROOT%{_datadir}/dict/words
 * Thu May 07 2026 Daniel McIlvaney <damcilva@microsoft.com> - 3.0-64
 - DO NOT MERGE: words benign-overlay test fixture (buildable)
 
-* Thu Apr 30 2026 Daniel McIlvaney <damcilva@microsoft.com> - 3.0-63
-- feat: introduce deterministic commit resolution via Azure Linux lock file
+* Wed May 13 2026 Daniel McIlvaney <damcilva@microsoft.com> - 3.0-63
+- DROP BEFORE MERGE: enable fork-PR testing of the GH stub
 
 * Fri Jul 25 2025 Fedora Release Engineering <releng@fedoraproject.org> - 3.0-62
 - Rebuilt for https://fedoraproject.org/wiki/Fedora_43_Mass_Rebuild
