@@ -7,8 +7,7 @@ updates:
   # `directory` (singular) does NOT support globbing.
   - package-ecosystem: pip
     directories:
-      - /.github/workflows/scripts/*
-      - /scripts/*
+      - /scripts/**
     schedule:
       interval: weekly
     open-pull-requests-limit: 5
