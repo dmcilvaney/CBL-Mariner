@@ -17,9 +17,13 @@
 #
 # Security: the PR checkout is data-only. We never run PR scripts, and the
 # runner Dockerfile + build context come from the trusted base checkout. The
-# azldev binary is built from the version pinned in the PR's .azldev-version
-# (so a version-bump PR is validated with the binary that will actually run
-# post-merge). The Dockerfile hardcodes the module path to the Microsoft-owned
+# azldev binary is built from the POST-merge .azldev-version -- the value the
+# file will have on 4.0 once this PR lands -- read from GitHub's test-merge
+# commit (pr-merge-sha) via the Contents API, so no merge tree is ever checked
+# out. This validates every PR against the binary that will actually run
+# post-merge: a version-bump PR against its new binary, and a behind-base PR
+# against the base branch's current binary (not its own stale pin). The
+# Dockerfile hardcodes the module path to the Microsoft-owned
 # github.com/microsoft/azure-linux-dev-tools repo, so the PR can only choose a
 # *ref* (tag/branch/commit) -- it cannot redirect `go install` to a different
 # module. This is NOT the same as "only Microsoft-authored code runs": a ref
@@ -41,6 +45,13 @@ on:
         type: string
       pr-base-sha:
         required: true
+        type: string
+      # GitHub's test-merge commit SHA (base + head merged). May be empty when
+      # the PR is not mergeable or mergeability is still being computed; the
+      # render/update_locks jobs fail closed in that case. Used to read the
+      # post-merge .azldev-version (the binary that will run on 4.0 after merge).
+      pr-merge-sha:
+        required: false
         type: string
       pr-number:
         required: true
@@ -93,19 +104,35 @@ jobs:
           persist-credentials: false
 
       - name: Build azldev runner container
+        env:
+          REPO: ${{ inputs.repo }}
+          PR_MERGE_SHA: ${{ inputs.pr-merge-sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Build with the azldev version the PR proposes (pr-head/.azldev-version),
-          # NOT the base branch's. For a version-bump PR these differ, and the whole
-          # point of the drift check is to run with the binary that will actually run
-          # on 4.0 post-merge -- the base binary would pass the check and then drift
-          # the moment the bump lands. Only the version string comes from the PR; the
-          # Dockerfile + build context are the trusted base checkout, and the
-          # Dockerfile hardcodes the module path to the Microsoft-owned repo.
-          AZLDEV_VERSION="$(tr -d '\n' < pr-head/.azldev-version)"
+          # Build with the azldev version that will be in effect on 4.0 AFTER
+          # this PR merges -- the whole point of the drift check is to run the
+          # binary that will actually render specs post-merge. That value is the
+          # .azldev-version at GitHub's test-merge commit (pr-merge-sha): it
+          # picks up the PR's bump for a version-bump PR, and the base branch's
+          # current pin for a behind-base PR (whose own pin is stale). We read
+          # just that one file via the Contents API -- no merge tree is checked
+          # out. Only the version string is PR-influenced; the Dockerfile + build
+          # context are the trusted base checkout, and the Dockerfile hardcodes
+          # the module path to the Microsoft-owned repo.
+          if [ -z "$PR_MERGE_SHA" ]; then
+            echo "::error::No merge commit for this PR (merge_commit_sha is empty) -- resolve conflicts / rebase onto the base branch, then re-run."
+            exit 1
+          fi
+          if ! printf '%s' "$PR_MERGE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::pr-merge-sha is not a 40-char lowercase hex SHA: '$PR_MERGE_SHA'"
+            exit 1
+          fi
+          AZLDEV_VERSION="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/${REPO}/contents/.azldev-version?ref=${PR_MERGE_SHA}" | tr -d '\n')"
           # Hygiene: reject a malformed/garbage version before it reaches docker build.
           if ! printf '%s' "$AZLDEV_VERSION" | grep -Eq '^[0-9A-Za-z._+-]+$'; then
-            echo "::error::pr-head/.azldev-version is empty or has unexpected characters"
+            echo "::error::post-merge .azldev-version is empty or has unexpected characters"
             exit 1
           fi
           docker build \
@@ -321,20 +348,45 @@ jobs:
           persist-credentials: false
 
       - name: Build azldev runner container
+        id: resolve
+        env:
+          REPO: ${{ inputs.repo }}
+          PR_MERGE_SHA: ${{ inputs.pr-merge-sha }}
+          GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # Build with the azldev version the PR proposes (pr-head/.azldev-version),
-          # NOT the base branch's. For a version-bump PR these differ, and the whole
-          # point of the drift check is to run with the binary that will actually run
-          # on 4.0 post-merge -- the base binary would pass the check and then drift
-          # the moment the bump lands. Only the version string comes from the PR; the
-          # Dockerfile + build context are the trusted base checkout, and the
-          # Dockerfile hardcodes the module path to the Microsoft-owned repo.
-          AZLDEV_VERSION="$(tr -d '\n' < pr-head/.azldev-version)"
-          # Hygiene: reject a malformed/garbage version before it reaches docker build.
-          if ! printf '%s' "$AZLDEV_VERSION" | grep -Eq '^[0-9A-Za-z._+-]+$'; then
-            echo "::error::pr-head/.azldev-version is empty or has unexpected characters"
+          # Build with the azldev version that will be in effect on 4.0 AFTER
+          # this PR merges (see the matching step in the update_locks job for the
+          # full rationale): the .azldev-version at GitHub's test-merge commit
+          # (pr-merge-sha), read via the Contents API -- no merge tree checked
+          # out. Only the version string is PR-influenced; the Dockerfile + build
+          # context are the trusted base checkout.
+          if [ -z "$PR_MERGE_SHA" ]; then
+            echo "::error::No merge commit for this PR (merge_commit_sha is empty) -- resolve conflicts / rebase onto the base branch, then re-run. (GitHub may also just need a moment to compute mergeability.)"
             exit 1
+          fi
+          if ! printf '%s' "$PR_MERGE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
+            echo "::error::pr-merge-sha is not a 40-char lowercase hex SHA: '$PR_MERGE_SHA'"
+            exit 1
+          fi
+          AZLDEV_VERSION="$(gh api -H 'Accept: application/vnd.github.raw' \
+            "repos/${REPO}/contents/.azldev-version?ref=${PR_MERGE_SHA}" | tr -d '\n')"
+          if ! printf '%s' "$AZLDEV_VERSION" | grep -Eq '^[0-9A-Za-z._+-]+$'; then
+            echo "::error::post-merge .azldev-version is empty or has unexpected characters"
+            exit 1
+          fi
+          # render-all when the post-merge azldev version differs from the base
+          # branch's CURRENT pin (.azldev-version in the trusted base checkout at
+          # the workspace root). That is exactly "this PR changes the azldev
+          # binary on 4.0": an azldev swap can change rendered output for ANY
+          # component, so a PR-scoped render would miss that drift. A behind-base
+          # PR (post-merge version == base) takes the scoped path; a version-bump
+          # PR takes the full render. Consumed by the next step via RENDER_ALL.
+          BASE_VERSION="$(tr -d '\n' < .azldev-version)"
+          if [ "$AZLDEV_VERSION" != "$BASE_VERSION" ]; then
+            echo "render-all=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "render-all=false" >> "$GITHUB_OUTPUT"
           fi
           docker build \
             --build-arg UID="$(id -u)" \
@@ -366,6 +418,10 @@ jobs:
           PR_BASE_SHA: ${{ inputs.pr-base-sha }}
           PR_HEAD_SHA: ${{ inputs.pr-head-sha }}
           BASE_REPO: ${{ inputs.repo }}
+          # Resolved on the host (post-merge azldev version != base pin). "true"
+          # => render ALL components (the azldev binary changes on 4.0); "false"
+          # => PR-scoped render.
+          RENDER_ALL: ${{ steps.resolve.outputs.render-all }}
         run: |
           set -euo pipefail
           mkdir -p "$WORKSPACE/render-output"
@@ -385,30 +441,30 @@ jobs:
             -e PR_BASE_SHA \
             -e PR_HEAD_SHA \
             -e BASE_REPO \
+            -e RENDER_ALL \
             localhost/azldev-runner \
             bash -eu -o pipefail -c '
               SPECS_DIR=$(azldev config dump -q -f json | jq -r .project.renderedSpecsDir)
 
               # Stale forks may not have the upstream base SHA in their object
-              # store. Fetch it explicitly so the version-bump diff below and
-              # `compute_change_set.sh` can both resolve the base commit. The
-              # base repo is public so no auth is needed.
+              # store. Fetch it explicitly so `compute_change_set.sh` can
+              # resolve the base commit for the PR-scoped render set. The base
+              # repo is public so no auth is needed.
               git -C /workdir remote add base "https://github.com/$BASE_REPO.git" 2>/dev/null || true
               git -C /workdir fetch --no-tags base "$PR_BASE_SHA"
 
-              # A change to .azldev-version swaps the azldev binary, which can
-              # alter rendered output for ANY component -- not just the ones
-              # this PR edits -- so a PR-scoped render would miss that drift.
-              # Detect it with a plain git diff (both commits are local after
-              # the fetch above) and render everything when it moved. Using git
-              # here -- rather than the REST "list PR files" endpoint -- avoids
-              # the 3000-file cap and 30-results-per-page pagination of that
-              # endpoint, so detection stays correct for arbitrarily large PRs.
-              if ! git -C /workdir diff --quiet "$PR_BASE_SHA" "$PR_HEAD_SHA" -- .azldev-version; then
+              # RENDER_ALL is resolved on the host (see the "Build azldev runner
+              # container" step): true when the azldev version that will be in
+              # effect on 4.0 AFTER this PR merges differs from the base branch's
+              # current pin -- i.e. this PR changes the azldev binary. An azldev
+              # swap can change rendered output for ANY component, not just the
+              # ones this PR edits, so a PR-scoped render would miss that drift;
+              # render everything in that case.
+              if [ "$RENDER_ALL" = "true" ]; then
                 # `--clean-stale` prunes orphaned spec dirs globally, which
                 # subsumes the targeted deleted-component cleanup the scoped
                 # branch does below.
-                echo ".azldev-version changed -- rendering ALL components."
+                echo "azldev version changes on merge -- rendering ALL components."
                 azldev component render -q -a --clean-stale -O json \
                   > /output/render-output.json
               else
