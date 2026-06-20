@@ -1,0 +1,7 @@
+Fork CI test artifact — DO NOT MERGE.
+
+"Stale" scenario: this branch does NOT touch .azldev-version (it stays at the
+value it had when the branch was cut). The base branch is then bumped to a
+different azldev version. The check must resolve the POST-merge azldev version
+(= the base's value, via the merge commit), NOT this branch's now-stale value.
+Expected: Build step resolves the base version; render-all=false (scoped path).
