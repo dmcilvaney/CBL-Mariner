@@ -154,6 +154,7 @@ jobs:
             echo "::error::post-merge .azldev-version is empty or has unexpected characters"
             exit 1
           fi
+          echo "Resolved post-merge azldev version: ${AZLDEV_VERSION} (test-merge ${PR_MERGE_SHA})"
           docker build \
             --build-arg UID="$(id -u)" \
             --build-arg AZLDEV_VERSION="$AZLDEV_VERSION" \
@@ -413,6 +414,7 @@ jobs:
             echo "::error::post-merge .azldev-version is empty or has unexpected characters"
             exit 1
           fi
+          echo "Resolved post-merge azldev version: ${AZLDEV_VERSION} (test-merge ${PR_MERGE_SHA})"
           # render-all when the post-merge azldev version differs from the base
           # branch's CURRENT pin (.azldev-version in the trusted base checkout at
           # the workspace root). That is exactly "this PR changes the azldev
@@ -422,8 +424,10 @@ jobs:
           # PR takes the full render. Consumed by the next step via RENDER_ALL.
           BASE_VERSION="$(tr -d '\n' < .azldev-version)"
           if [ "$AZLDEV_VERSION" != "$BASE_VERSION" ]; then
+            echo "RENDER_ALL=true -- post-merge azldev ${AZLDEV_VERSION} differs from base ${BASE_VERSION}; full render"
             echo "render-all=true" >> "$GITHUB_OUTPUT"
           else
+            echo "RENDER_ALL=false -- post-merge azldev ${AZLDEV_VERSION} matches base ${BASE_VERSION}; scoped render"
             echo "render-all=false" >> "$GITHUB_OUTPUT"
           fi
           docker build \
