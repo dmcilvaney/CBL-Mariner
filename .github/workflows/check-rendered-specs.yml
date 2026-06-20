@@ -82,6 +82,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      pull-requests: read # read mergeability + merge_commit_sha to resolve the post-merge azldev version
     outputs:
       patch-url: ${{ steps.upload-locks-patch.outputs.artifact-url }}
     steps:
@@ -106,6 +107,7 @@ jobs:
       - name: Build azldev runner container
         env:
           REPO: ${{ inputs.repo }}
+          PR_NUMBER: ${{ inputs.pr-number }}
           PR_MERGE_SHA: ${{ inputs.pr-merge-sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -120,12 +122,29 @@ jobs:
           # out. Only the version string is PR-influenced; the Dockerfile + build
           # context are the trusted base checkout, and the Dockerfile hardcodes
           # the module path to the Microsoft-owned repo.
+          #
+          # GitHub computes mergeability (and the test-merge commit)
+          # ASYNCHRONOUSLY, so the event's merge_commit_sha is frequently empty
+          # on the first run after a PR opens. Use it as a fast path, but when it
+          # is empty poll the PR endpoint until GitHub finishes the merge, rather
+          # than failing every PR's first run.
           if [ -z "$PR_MERGE_SHA" ]; then
-            echo "::error::No merge commit for this PR (merge_commit_sha is empty) -- resolve conflicts / rebase onto the base branch, then re-run."
-            exit 1
+            for attempt in $(seq 1 15); do
+              pr_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
+              mergeable="$(jq -r '.mergeable' <<<"$pr_json")"
+              if [ "$mergeable" = "true" ]; then
+                PR_MERGE_SHA="$(jq -r '.merge_commit_sha // ""' <<<"$pr_json")"
+                break
+              elif [ "$mergeable" = "false" ]; then
+                echo "::error::PR is not mergeable (conflicts with the base branch) -- rebase / resolve conflicts, then re-run."
+                exit 1
+              fi
+              echo "GitHub has not finished computing mergeability yet (attempt ${attempt}/15); waiting 4s..."
+              sleep 4
+            done
           fi
           if ! printf '%s' "$PR_MERGE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::pr-merge-sha is not a 40-char lowercase hex SHA: '$PR_MERGE_SHA'"
+            echo "::error::Could not resolve the test-merge commit SHA (GitHub still computing mergeability). Re-run the job."
             exit 1
           fi
           AZLDEV_VERSION="$(gh api -H 'Accept: application/vnd.github.raw' \
@@ -303,6 +322,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
+      pull-requests: read # read mergeability + merge_commit_sha to resolve the post-merge azldev version
     outputs:
       patch-url: ${{ steps.upload-patch.outputs.artifact-url }}
     steps:
@@ -351,6 +371,7 @@ jobs:
         id: resolve
         env:
           REPO: ${{ inputs.repo }}
+          PR_NUMBER: ${{ inputs.pr-number }}
           PR_MERGE_SHA: ${{ inputs.pr-merge-sha }}
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -361,12 +382,29 @@ jobs:
           # (pr-merge-sha), read via the Contents API -- no merge tree checked
           # out. Only the version string is PR-influenced; the Dockerfile + build
           # context are the trusted base checkout.
+          #
+          # GitHub computes mergeability (and the test-merge commit)
+          # ASYNCHRONOUSLY, so the event's merge_commit_sha is frequently empty
+          # on the first run after a PR opens. Use it as a fast path, but when it
+          # is empty poll the PR endpoint until GitHub finishes the merge, rather
+          # than failing every PR's first run.
           if [ -z "$PR_MERGE_SHA" ]; then
-            echo "::error::No merge commit for this PR (merge_commit_sha is empty) -- resolve conflicts / rebase onto the base branch, then re-run. (GitHub may also just need a moment to compute mergeability.)"
-            exit 1
+            for attempt in $(seq 1 15); do
+              pr_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}")"
+              mergeable="$(jq -r '.mergeable' <<<"$pr_json")"
+              if [ "$mergeable" = "true" ]; then
+                PR_MERGE_SHA="$(jq -r '.merge_commit_sha // ""' <<<"$pr_json")"
+                break
+              elif [ "$mergeable" = "false" ]; then
+                echo "::error::PR is not mergeable (conflicts with the base branch) -- rebase / resolve conflicts, then re-run."
+                exit 1
+              fi
+              echo "GitHub has not finished computing mergeability yet (attempt ${attempt}/15); waiting 4s..."
+              sleep 4
+            done
           fi
           if ! printf '%s' "$PR_MERGE_SHA" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::pr-merge-sha is not a 40-char lowercase hex SHA: '$PR_MERGE_SHA'"
+            echo "::error::Could not resolve the test-merge commit SHA (GitHub still computing mergeability). Re-run the job."
             exit 1
           fi
           AZLDEV_VERSION="$(gh api -H 'Accept: application/vnd.github.raw' \
