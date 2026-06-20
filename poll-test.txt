@@ -1,0 +1,7 @@
+Fork CI test artifact — DO NOT MERGE.
+
+Inert change to open a fresh PR and verify that the post-merge azldev-version
+resolution polls GitHub for merge_commit_sha on a cold `opened` event (where the
+event payload's merge_commit_sha is typically still null). No component, lock, or
+spec is touched, so update_locks + render should both run green while the
+"Build azldev runner container" step exercises the poll in each job.
