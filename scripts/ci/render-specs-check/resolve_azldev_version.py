@@ -7,6 +7,7 @@ import re
 import subprocess
 import sys
 import time
+from dataclasses import dataclass
 from pathlib import Path
 
 VERSION_RE = re.compile(r"[0-9A-Za-z._+-]+")
@@ -15,7 +16,18 @@ SHA_RE = re.compile(r"[0-9a-f]{40}")
 MERGE_ATTEMPTS = 30
 CONTENT_ATTEMPTS = 5
 RETRY_SECONDS = 4
-PR_FIELD_COUNT = 3
+GH_API_TIMEOUT_SECONDS = 15
+PR_FIELD_COUNT = 4
+
+
+@dataclass(frozen=True, slots=True)
+class PullRequest:
+    """Expected pull request snapshot."""
+
+    repo: str
+    number: int
+    head_sha: str
+    base_sha: str
 
 
 class ResolutionError(RuntimeError):
@@ -48,46 +60,73 @@ def read_version(path: Path) -> str:
     return validate_version(value, str(path))
 
 
-def validate_inputs(repo: str, pr_number: int, expected_head: str) -> None:
+def validate_inputs(pull_request: PullRequest) -> None:
     """Validate values used in API paths and workflow output."""
-    if not REPO_RE.fullmatch(repo):
-        message = f"repo is not a valid owner/repo: {repo!r}"
+    if not REPO_RE.fullmatch(pull_request.repo):
+        message = f"repo is not a valid owner/repo: {pull_request.repo!r}"
         raise ResolutionError(message)
-    if pr_number < 1:
-        message = f"pr-number is not a positive integer: {pr_number!r}"
+    if pull_request.number < 1:
+        message = f"pr-number is not a positive integer: {pull_request.number!r}"
         raise ResolutionError(message)
-    if not SHA_RE.fullmatch(expected_head):
-        message = f"head-sha is not a 40-character lowercase hex SHA: {expected_head!r}"
+    if not SHA_RE.fullmatch(pull_request.head_sha):
+        message = f"head-sha is not a 40-character lowercase hex SHA: {pull_request.head_sha!r}"
+        raise ResolutionError(message)
+    if not SHA_RE.fullmatch(pull_request.base_sha):
+        message = f"base-sha is not a 40-character lowercase hex SHA: {pull_request.base_sha!r}"
         raise ResolutionError(message)
 
 
 def github_api(endpoint: str, *options: str) -> str:
     """Call GitHub through the authenticated gh CLI and return stdout."""
     command = ["gh", "api", endpoint, *options]
-    result = subprocess.run(command, capture_output=True, text=True, check=False)
+    try:
+        result = subprocess.run(
+            command,
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GH_API_TIMEOUT_SECONDS,
+        )
+    except subprocess.TimeoutExpired as error:
+        message = f"gh api timed out after {GH_API_TIMEOUT_SECONDS} seconds"
+        raise GitHubApiError(message) from error
     if result.returncode != 0:
         detail = result.stderr.strip() or f"gh api exited with {result.returncode}"
         raise GitHubApiError(detail)
     return result.stdout
 
 
-def _resolve_merge_sha(repo: str, pr_number: int, expected_head: str) -> str:
-    """Poll GitHub until the current PR test-merge commit is available."""
-    endpoint = f"repos/{repo}/pulls/{pr_number}"
-    query = '[.head.sha, (.mergeable | tostring), (.merge_commit_sha // "")] | @tsv'
+def _validate_pr_snapshot(fields: list[str], pull_request: PullRequest) -> tuple[str, str]:
+    """Validate live PR fields against the trusted workflow snapshot."""
+    if len(fields) != PR_FIELD_COUNT:
+        message = "GitHub returned an invalid PR response"
+        raise ResolutionError(message)
+    polled_head, polled_base, mergeable, candidate = fields
+    if polled_head != pull_request.head_sha:
+        message = f"PR head advanced from {pull_request.head_sha!r} to {polled_head!r}; a newer run supersedes this one"
+        raise ResolutionError(message)
+    if polled_base != pull_request.base_sha:
+        message = f"PR base advanced from {pull_request.base_sha!r} to {polled_base!r}; a newer run must validate it"
+        raise ResolutionError(message)
+    return mergeable, candidate
+
+
+def _resolve_merge_sha(pull_request: PullRequest, *, wait_for_merge: bool) -> str | None:
+    """Validate the live PR snapshot and optionally resolve its test-merge commit."""
+    endpoint = f"repos/{pull_request.repo}/pulls/{pull_request.number}"
+    query = '[.head.sha, .base.sha, (.mergeable | tostring), (.merge_commit_sha // "")] | @tsv'
+    last_error: GitHubApiError | None = None
     for attempt in range(1, MERGE_ATTEMPTS + 1):
         try:
             fields = github_api(endpoint, "--jq", query).rstrip("\r\n").split("\t")
-        except GitHubApiError:
-            print(f"PR API call failed ({attempt}/{MERGE_ATTEMPTS}); retrying...")
+        except GitHubApiError as error:
+            last_error = error
+            print(f"PR API call failed ({attempt}/{MERGE_ATTEMPTS}): {error}; retrying...")
         else:
-            if len(fields) != PR_FIELD_COUNT:
-                message = "GitHub returned an invalid PR response"
-                raise ResolutionError(message)
-            polled_head, mergeable, candidate = fields
-            if polled_head != expected_head:
-                message = f"PR head advanced from {expected_head!r} to {polled_head!r}; a newer run supersedes this one"
-                raise ResolutionError(message)
+            last_error = None
+            mergeable, candidate = _validate_pr_snapshot(fields, pull_request)
+            if not wait_for_merge:
+                return None
             if mergeable == "false":
                 message = "PR conflicts with the base branch"
                 raise ResolutionError(message)
@@ -97,24 +136,30 @@ def _resolve_merge_sha(repo: str, pr_number: int, expected_head: str) -> str:
         if attempt < MERGE_ATTEMPTS:
             time.sleep(RETRY_SECONDS)
 
-    message = f"GitHub did not publish a test-merge commit after {MERGE_ATTEMPTS} attempts"
+    message = (
+        f"GitHub API failed after {MERGE_ATTEMPTS} attempts: {last_error}"
+        if last_error
+        else f"GitHub did not publish a test-merge commit after {MERGE_ATTEMPTS} attempts"
+    )
     raise ResolutionError(message)
 
 
 def _read_merged_version(repo: str, merge_sha: str) -> str:
     """Read the azldev pin from a test-merge commit."""
     endpoint = f"repos/{repo}/contents/.azldev-version?ref={merge_sha}"
+    last_error: GitHubApiError | None = None
     for attempt in range(1, CONTENT_ATTEMPTS + 1):
         try:
             content = github_api(endpoint, "-H", "Accept: application/vnd.github.raw")
-        except GitHubApiError:
-            print(f"Could not read the post-merge .azldev-version ({attempt}/{CONTENT_ATTEMPTS}); retrying...")
+        except GitHubApiError as error:
+            last_error = error
+            print(f"Could not read the post-merge .azldev-version ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
             if attempt < CONTENT_ATTEMPTS:
                 time.sleep(RETRY_SECONDS)
         else:
             return validate_version(content, "post-merge .azldev-version")
 
-    message = "could not read .azldev-version from the test-merge commit"
+    message = f"could not read .azldev-version from the test-merge commit: {last_error}"
     raise ResolutionError(message)
 
 
@@ -122,32 +167,31 @@ def resolve_version(
     base_version: str,
     head_version: str,
     *,
-    repo: str,
-    pr_number: int,
-    expected_head: str,
+    pull_request: PullRequest,
 ) -> tuple[str, bool]:
     """Return the post-merge version and whether all specs must be rendered."""
-    validate_inputs(repo, pr_number, expected_head)
+    validate_inputs(pull_request)
     base_version = validate_version(base_version, "base version")
     head_version = validate_version(head_version, "PR-head version")
 
-    if head_version == base_version:
+    merge_sha = _resolve_merge_sha(pull_request, wait_for_merge=head_version != base_version)
+    if merge_sha is None:
         return base_version, False
 
-    merge_sha = _resolve_merge_sha(repo, pr_number, expected_head)
-    merged_version = _read_merged_version(repo, merge_sha)
+    merged_version = _read_merged_version(pull_request.repo, merge_sha)
     return merged_version, merged_version != base_version
 
 
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", required=True)
-    parser.add_argument("--pr-number", required=True, type=int)
-    parser.add_argument("--head-sha", required=True)
-    parser.add_argument("--base-version-file", required=True, type=Path)
-    parser.add_argument("--head-version-file", required=True, type=Path)
-    parser.add_argument("--github-output", required=True, type=Path)
+    parser.add_argument("--repo", required=True, help="GitHub owner/repository")
+    parser.add_argument("--pr-number", required=True, type=int, help="pull request number")
+    parser.add_argument("--head-sha", required=True, help="expected PR head commit")
+    parser.add_argument("--base-sha", required=True, help="trusted base commit")
+    parser.add_argument("--base-version-file", required=True, type=Path, help="base azldev version file")
+    parser.add_argument("--head-version-file", required=True, type=Path, help="PR-head azldev version file")
+    parser.add_argument("--github-output", required=True, type=Path, help="GitHub Actions output file")
     return parser.parse_args()
 
 
@@ -157,12 +201,16 @@ def main() -> int:
     try:
         base_version = read_version(args.base_version_file)
         head_version = read_version(args.head_version_file)
+        pull_request = PullRequest(
+            repo=args.repo,
+            number=args.pr_number,
+            head_sha=args.head_sha,
+            base_sha=args.base_sha,
+        )
         version, render_all = resolve_version(
             base_version=base_version,
             head_version=head_version,
-            expected_head=args.head_sha,
-            repo=args.repo,
-            pr_number=args.pr_number,
+            pull_request=pull_request,
         )
         with args.github_output.open("a", encoding="utf-8") as output:
             output.write(f"azldev-version={version}\n")

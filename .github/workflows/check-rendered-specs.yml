@@ -19,6 +19,8 @@
 # post-merge azldev pin and passes only a validated version token to the trusted
 # runner Dockerfile, which hardcodes the Microsoft-owned module path. PR-derived
 # azldev runs only inside sandboxed jobs with a read-only token and no secrets.
+# A selected ref can still contain code introduced through the module's fork
+# network; the sandbox and absence of secrets bound that residual trust.
 # Spec/overlay/lock data still comes from PR head, not a materialized merge tree.
 name: "Check Rendered Specs"
 
@@ -63,7 +65,7 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: read # resolve the test-merge version when base/head pins differ
+      pull-requests: read # validate the live PR snapshot and resolve its test-merge version
     outputs:
       patch-url: ${{ steps.upload-locks-patch.outputs.artifact-url }}
       # Resolve once so lock and render checks use the same binary.
@@ -96,7 +98,7 @@ jobs:
           allow-unsafe-pr-checkout: true
 
       # The trusted helper reads PR data but emits only a validated version and
-      # boolean. It skips GitHub entirely when the base and head pins match.
+      # boolean. Equal pins need one freshness check but no mergeability polling.
       - name: Resolve post-merge azldev version
         id: resolve
         env:
@@ -110,6 +112,7 @@ jobs:
             --repo "$REPO" \
             --pr-number "$PR_NUMBER" \
             --head-sha "$PR_HEAD_SHA" \
+            --base-sha "$(git rev-parse HEAD)" \
             --base-version-file .azldev-version \
             --head-version-file pr-head/.azldev-version \
             --github-output "$GITHUB_OUTPUT"
