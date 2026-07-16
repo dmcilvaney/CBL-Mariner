@@ -43,8 +43,7 @@ jobs:
           set -euo pipefail
           cd "$DIR"
 
-          # A clean venv ensures we exercise exactly the pinned requirements,
-          # when this helper area has runtime dependencies.
+          # A clean venv ensures we exercise exactly the pinned requirements.
           python3 -m venv .smoke-venv
           # shellcheck disable=SC1091
           . .smoke-venv/bin/activate
@@ -87,9 +86,7 @@ jobs:
           # shellcheck disable=SC1091
           . .smoke-venv/bin/activate
 
-          shopt -s nullglob
-          tests=( tests/test_*.py )
-          if (( ${#tests[@]} == 0 )); then
+          if [[ ! -d tests ]]; then
             echo "No helper tests in $DIR; skipping."
             exit 0
           fi
@@ -97,4 +94,4 @@ jobs:
           if [[ -f tests/requirements.txt ]]; then
             pip install --quiet -r tests/requirements.txt
           fi
-          python -m pytest "${tests[@]}"
+          python -m pytest tests
