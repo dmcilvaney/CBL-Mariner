@@ -1,4 +1,7 @@
-"""Resolve the azldev version that will be present after a PR merges."""
+"""Resolve the azldev version that will be present after a PR merges.
+
+Resolved values are printed as ``key=value`` records; diagnostics go to stderr.
+"""
 
 from __future__ import annotations
 
@@ -36,6 +39,11 @@ class ResolutionError(RuntimeError):
 
 class GitHubApiError(ResolutionError):
     """Raised when a GitHub API request fails."""
+
+
+def _log(message: str) -> None:
+    """Print a diagnostic without contaminating machine-readable stdout."""
+    print(message, file=sys.stderr)
 
 
 def validate_version(value: str, source: str) -> str:
@@ -121,7 +129,7 @@ def _resolve_merge_sha(pull_request: PullRequest, *, wait_for_merge: bool) -> st
             fields = github_api(endpoint, "--jq", query).rstrip("\r\n").split("\t")
         except GitHubApiError as error:
             last_error = error
-            print(f"PR API call failed ({attempt}/{MERGE_ATTEMPTS}): {error}; retrying...")
+            _log(f"PR API call failed ({attempt}/{MERGE_ATTEMPTS}): {error}; retrying...")
         else:
             last_error = None
             mergeable, candidate = _validate_pr_snapshot(fields, pull_request)
@@ -132,7 +140,7 @@ def _resolve_merge_sha(pull_request: PullRequest, *, wait_for_merge: bool) -> st
                 raise ResolutionError(message)
             if mergeable == "true" and SHA_RE.fullmatch(candidate):
                 return candidate
-            print(f"Waiting for GitHub to compute the test-merge commit ({attempt}/{MERGE_ATTEMPTS})...")
+            _log(f"Waiting for GitHub to compute the test-merge commit ({attempt}/{MERGE_ATTEMPTS})...")
         if attempt < MERGE_ATTEMPTS:
             time.sleep(RETRY_SECONDS)
 
@@ -153,7 +161,7 @@ def _read_merged_version(repo: str, merge_sha: str) -> str:
             content = github_api(endpoint, "-H", "Accept: application/vnd.github.raw")
         except GitHubApiError as error:
             last_error = error
-            print(f"Could not read the post-merge .azldev-version ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
+            _log(f"Could not read the post-merge .azldev-version ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
             if attempt < CONTENT_ATTEMPTS:
                 time.sleep(RETRY_SECONDS)
         else:
@@ -191,12 +199,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--base-sha", required=True, help="trusted base commit")
     parser.add_argument("--base-version-file", required=True, type=Path, help="base azldev version file")
     parser.add_argument("--head-version-file", required=True, type=Path, help="PR-head azldev version file")
-    parser.add_argument("--github-output", required=True, type=Path, help="GitHub Actions output file")
     return parser.parse_args()
 
 
 def main() -> int:
-    """Resolve the version and write GitHub Actions step outputs."""
+    """Resolve the version and emit machine-readable output."""
     args = parse_args()
     try:
         base_version = read_version(args.base_version_file)
@@ -212,15 +219,14 @@ def main() -> int:
             head_version=head_version,
             pull_request=pull_request,
         )
-        with args.github_output.open("a", encoding="utf-8") as output:
-            output.write(f"azldev-version={version}\n")
-            output.write(f"render-all={str(render_all).lower()}\n")
-        print(
+        _log(
             f"Resolved azldev version: {version}; render all: {str(render_all).lower()} "
             f"(base: {base_version}, PR head: {head_version})"
         )
+        print(f"azldev-version={version}")
+        print(f"render-all={str(render_all).lower()}")
     except ResolutionError as error:
-        print(f"::error::{error}", file=sys.stderr)
+        _log(f"Error: {error}")
         return 1
     return 0
 

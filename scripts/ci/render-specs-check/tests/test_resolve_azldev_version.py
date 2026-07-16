@@ -133,14 +133,16 @@ def test_github_api_timeout_is_retryable(monkeypatch: pytest.MonkeyPatch) -> Non
         resolver.github_api("repos/microsoft/azurelinux/pulls/1")
 
 
-def test_main_rejects_multiline_output_injection(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    """Reject a multiline pin without appending attacker-controlled outputs."""
+def test_main_rejects_multiline_output_injection(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Reject a multiline pin without emitting attacker-controlled records."""
     base_file = tmp_path / "base-version"
     head_file = tmp_path / "head-version"
-    output_file = tmp_path / "github-output"
     base_file.write_text("v1.2.3\n", encoding="ascii")
     head_file.write_text("safe\nazldev-version=attacker-value\n", encoding="ascii")
-    output_file.write_text("existing-output=true\n", encoding="ascii")
     github_api = Mock()
     monkeypatch.setattr(resolver, "github_api", github_api)
     monkeypatch.setattr(
@@ -160,15 +162,13 @@ def test_main_rejects_multiline_output_injection(monkeypatch: pytest.MonkeyPatch
             str(base_file),
             "--head-version-file",
             str(head_file),
-            "--github-output",
-            str(output_file),
         ],
     )
 
     if resolver.main() == 0:
         pytest.fail("multiline version unexpectedly succeeded")
-    if output_file.read_text(encoding="ascii") != "existing-output=true\n":
-        pytest.fail("resolver modified GitHub output after rejecting the version")
+    if capsys.readouterr().out:
+        pytest.fail("resolver emitted machine-readable output after rejecting the version")
     github_api.assert_not_called()
 
 
