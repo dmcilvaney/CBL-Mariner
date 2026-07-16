@@ -15,27 +15,11 @@
 # stale lock would steer it toward the wrong scope. When locks are dirty,
 # render is skipped and only the locks comment is posted.
 #
-# Security: the PR checkout is data-only. We never run PR scripts, and the
-# runner Dockerfile + build context come from the trusted base checkout. The
-# azldev binary is built from the POST-merge .azldev-version -- the value the
-# file will have on 4.0 once this PR lands -- read from GitHub's test-merge
-# commit (resolved by polling the PR's mergeability) via the Contents API, so no merge tree is ever checked
-# out. This validates every PR against the binary that will actually run
-# post-merge: a version-bump PR against its new binary, and a behind-base PR
-# against the base branch's current binary (not its own stale pin). Note that
-# only the azldev *binary version* is taken post-merge; the spec/overlay/lock
-# *data* is rendered from the PR-head worktree as-is, not from a materialized
-# merge tree -- so this catches binary-driven drift, not drift that would
-# surface only once the PR and base content are textually merged. The
-# Dockerfile hardcodes the module path to the Microsoft-owned
-# github.com/microsoft/azure-linux-dev-tools repo, so the PR can only choose a
-# *ref* (tag/branch/commit) -- it cannot redirect `go install` to a different
-# module. This is NOT the same as "only Microsoft-authored code runs": a ref
-# reachable via that repo's fork network (e.g. a commit behind an open
-# dev-tools PR) could in principle be selected. That residual is acceptable
-# only because the build/render jobs run with `contents: read`, hold no
-# secrets, and execute azldev inside the sandboxed container -- see the
-# per-job `permissions` below.
+# Security: the PR checkout is data-only. Trusted base code resolves the
+# post-merge azldev pin and passes only a validated version token to the trusted
+# runner Dockerfile, which hardcodes the Microsoft-owned module path. PR-derived
+# azldev runs only inside sandboxed jobs with a read-only token and no secrets.
+# Spec/overlay/lock data still comes from PR head, not a materialized merge tree.
 name: "Check Rendered Specs"
 
 on:
@@ -79,15 +63,10 @@ jobs:
     timeout-minutes: 60
     permissions:
       contents: read
-      pull-requests: read # poll PR mergeability + merge_commit_sha to resolve the post-merge azldev version
+      pull-requests: read # resolve the test-merge version when base/head pins differ
     outputs:
       patch-url: ${{ steps.upload-locks-patch.outputs.artifact-url }}
-      # NOTE: azldev-version / render-all are shared CI *context* (the resolved
-      # post-merge binary version), not lock/drift state -- update_locks just
-      # happens to be the single place that resolves them (it already polls PR
-      # mergeability). Resolved once here and consumed by the render job via
-      # needs.update_locks.outputs.*, so both check drift against the same
-      # post-merge azldev version -- no second, possibly-divergent poll.
+      # Resolve once so lock and render checks use the same binary.
       azldev-version: ${{ steps.resolve.outputs.azldev-version }}
       render-all: ${{ steps.resolve.outputs.render-all }}
     steps:
@@ -116,12 +95,8 @@ jobs:
           # sandboxed container — so the fork head is never executed with trust.
           allow-unsafe-pr-checkout: true
 
-      # Resolve the azldev version that will be in effect on 4.0 AFTER this PR
-      # merges -- the binary that will actually render specs post-merge -- and
-      # whether it differs from the base pin (RENDER_ALL). Done ONCE here and
-      # exposed as job outputs; the render job (which `needs:` this one) consumes
-      # them rather than polling a second time, which could resolve a different
-      # merge commit if the base advances between the two jobs.
+      # The trusted helper reads PR data but emits only a validated version and
+      # boolean. It skips GitHub entirely when the base and head pins match.
       - name: Resolve post-merge azldev version
         id: resolve
         env:
@@ -131,117 +106,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
-          # The post-merge azldev binary is the .azldev-version at GitHub's
-          # test-merge commit. We read just that one file via the Contents API --
-          # no merge tree is checked out, and only this regex-validated version
-          # string crosses to the host; the Dockerfile + build context are the
-          # trusted base checkout, and the Dockerfile hardcodes the module path
-          # to the Microsoft-owned repo.
-          #
-          # GitHub computes mergeability (and the test-merge commit)
-          # ASYNCHRONOUSLY, and the event payload's merge_commit_sha can be empty
-          # OR stale, so we never trust it -- always poll the PR endpoint for the
-          # authoritative current value.
-          if ! printf '%s' "$PR_NUMBER" | grep -Eq '^[0-9]+$'; then
-            echo "::error::pr-number is not a positive integer: '$PR_NUMBER'"
-            exit 1
-          fi
-          if ! printf '%s' "$REPO" | grep -Eq '^[A-Za-z0-9._-]+/[A-Za-z0-9._-]+$'; then
-            echo "::error::repo is not a valid owner/repo: '$REPO'"
-            exit 1
-          fi
-          merge_sha=""
-          # ~120s budget: usually instant once warm, but a large PR in a busy
-          # monorepo can take a while for GitHub to compute mergeability.
-          for attempt in {1..30}; do
-            # A transient API error (429/5xx/connectivity) should retry, not kill
-            # the job; only a definitive mergeable=false fails closed.
-            if ! pr_json="$(gh api "repos/${REPO}/pulls/${PR_NUMBER}" 2>/dev/null)"; then
-              echo "PR API call failed (attempt ${attempt}/30); retrying in 4s..."
-              sleep 4
-              continue
-            fi
-            # The checkout steps pin the PR head to the triggering event's
-            # SHA, but this poll reads the PR's CURRENT state. If the author
-            # pushed a newer head after the event, GitHub would compute the
-            # test-merge against that newer head while we render the event's
-            # (older) head -- a binary-vs-data mismatch. Bail; cancel-in-progress
-            # lets the newer run supersede this one.
-            polled_head="$(jq -r '.head.sha' <<<"$pr_json")"
-            if [ "$polled_head" != "$PR_HEAD_SHA" ]; then
-              echo "::error::PR head advanced ('$PR_HEAD_SHA' -> '$polled_head') since this run started; a newer run supersedes this one."
-              exit 1
-            fi
-            mergeable="$(jq -r '.mergeable' <<<"$pr_json")"
-            if [ "$mergeable" = "false" ]; then
-              echo "::error::PR is not mergeable (conflicts with the base branch) -- rebase / resolve conflicts, then re-run."
-              exit 1
-            fi
-            if [ "$mergeable" = "true" ]; then
-              # GitHub computes `mergeable` and `merge_commit_sha` independently
-              # and asynchronously, so `mergeable=true` can briefly coexist with
-              # a null merge_commit_sha. Only accept a fully-formed 40-hex SHA;
-              # otherwise keep polling rather than breaking out with an empty
-              # value (which would fail the post-loop check and force a needless
-              # manual re-run).
-              candidate_sha="$(jq -r '.merge_commit_sha // ""' <<<"$pr_json")"
-              if printf '%s' "$candidate_sha" | grep -Eq '^[0-9a-f]{40}$'; then
-                merge_sha="$candidate_sha"
-                break
-              fi
-              echo "PR is mergeable but GitHub has not published the test-merge commit yet (attempt ${attempt}/30); waiting 4s..."
-            else
-              echo "GitHub has not finished computing mergeability yet (attempt ${attempt}/30); waiting 4s..."
-            fi
-            sleep 4
-          done
-          if ! printf '%s' "$merge_sha" | grep -Eq '^[0-9a-f]{40}$'; then
-            echo "::error::Could not resolve the test-merge commit SHA after ~120s (GitHub never finished computing mergeability / publishing the test-merge commit, or the PR API calls kept failing -- see the per-attempt messages above). Re-run the job."
-            exit 1
-          fi
-          # Read the post-merge .azldev-version from the test-merge commit.
-          # `tr -d '\n'` strips ALL newlines (command substitution only removes
-          # the trailing one) BEFORE validating: the value flows into
-          # $GITHUB_OUTPUT as `azldev-version=<value>`, and $GITHUB_OUTPUT is
-          # parsed line-by-line with last-write-wins. Without collapsing to a
-          # single line, a multi-line file could smuggle a second,
-          # attacker-controlled `azldev-version=` line past the line-oriented
-          # `grep -q` below (which passes if ANY single line matches) and then
-          # override the output -- the value later flows into a `docker build
-          # --build-arg` and the Dockerfile's `RUN ... go install ...@<value>`,
-          # so it MUST be fully validated as a single token.
-          # The Contents API can briefly 404/5xx on a freshly-computed merge
-          # commit, so retry transient read failures instead of failing the job.
-          azldev_version=""
-          for attempt in {1..5}; do
-            if azldev_version="$(gh api -H 'Accept: application/vnd.github.raw' \
-                "repos/${REPO}/contents/.azldev-version?ref=${merge_sha}" | tr -d '\n')"; then
-              break
-            fi
-            echo "Could not read .azldev-version at the test-merge commit (attempt ${attempt}/5); retrying in 4s..."
-            azldev_version=""
-            sleep 4
-          done
-          if ! printf '%s' "$azldev_version" | grep -Eq '^[0-9A-Za-z._+-]+$'; then
-            echo "::error::post-merge .azldev-version is empty or has unexpected characters (could not read it from the test-merge commit, or its content is invalid)"
-            exit 1
-          fi
-          # render-all when the post-merge version differs from the base branch's
-          # CURRENT pin (.azldev-version in the trusted base checkout) -- i.e.
-          # this PR changes the azldev binary on 4.0, which can alter rendered
-          # output for ANY component, so a PR-scoped render would miss that
-          # drift. A behind-base PR (post-merge == base) takes the scoped path.
-          base_version="$(cat .azldev-version)"
-          if [ "$azldev_version" != "$base_version" ]; then
-            render_all=true
-          else
-            render_all=false
-          fi
-          echo "Resolved post-merge azldev version: ${azldev_version} (test-merge ${merge_sha}); RENDER_ALL=${render_all} (base pin ${base_version})"
-          {
-            echo "azldev-version=${azldev_version}"
-            echo "render-all=${render_all}"
-          } >> "$GITHUB_OUTPUT"
+          python3 scripts/ci/render-specs-check/resolve_azldev_version.py \
+            --repo "$REPO" \
+            --pr-number "$PR_NUMBER" \
+            --head-sha "$PR_HEAD_SHA" \
+            --base-version-file .azldev-version \
+            --head-version-file pr-head/.azldev-version \
+            --github-output "$GITHUB_OUTPUT"
 
       - name: Build azldev runner container
         env:
@@ -471,9 +342,7 @@ jobs:
           allow-unsafe-pr-checkout: true
 
       - name: Build azldev runner container
-        # The azldev version is resolved once by the update_locks job (which this
-        # job `needs:`) and consumed here, so render checks drift against the
-        # SAME post-merge binary update_locks validated the locks against.
+        # Reuse the version that update_locks already resolved.
         env:
           AZLDEV_VERSION: ${{ needs.update_locks.outputs.azldev-version }}
         run: |
@@ -508,9 +377,6 @@ jobs:
           PR_BASE_SHA: ${{ inputs.pr-base-sha }}
           PR_HEAD_SHA: ${{ inputs.pr-head-sha }}
           BASE_REPO: ${{ inputs.repo }}
-          # Resolved once by update_locks (post-merge azldev version != base
-          # pin). "true" => render ALL components (the azldev binary changes on
-          # 4.0); "false" => PR-scoped render.
           RENDER_ALL: ${{ needs.update_locks.outputs.render-all }}
         run: |
           set -euo pipefail
@@ -545,13 +411,7 @@ jobs:
               python3 /scripts-render/source_origin_guard.py
               SPECS_DIR=$(azldev config dump -q -f json | jq -r .project.renderedSpecsDir)
 
-              # RENDER_ALL is resolved on the host by the update_locks job's
-              # "Resolve post-merge azldev version" step: true when the azldev version that will be in
-              # effect on 4.0 AFTER this PR merges differs from the base branch's
-              # current pin -- i.e. this PR changes the azldev binary. An azldev
-              # swap can change rendered output for ANY component, not just the
-              # ones this PR edits, so a PR-scoped render would miss that drift;
-              # render everything in that case.
+              # A new post-merge azldev binary can affect every component.
               if [ "$RENDER_ALL" = "true" ]; then
                 # `--clean-stale` prunes orphaned spec dirs globally, which
                 # subsumes the targeted deleted-component cleanup the scoped
