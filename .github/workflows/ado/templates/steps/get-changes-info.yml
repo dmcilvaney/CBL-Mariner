@@ -36,6 +36,18 @@ parameters:
 steps:
   - template: ensure-full-history.yml
 
+  # Validate the PR merge checkout before install-deps resolves azldev from its
+  # go.mod. This is the same post-merge module state the GitHub render gate
+  # reads from refs/pull/<number>/merge.
+  # Sets job variables:
+  # - baseCommit
+  # - sourceCommit
+  - ${{ if eq(parameters.mode, 'pr') }}:
+    - template: commit-range-pr.yml
+      parameters:
+        baseCommitVar: ${{ parameters.baseCommitVar }}
+        sourceCommitVar: ${{ parameters.sourceCommitVar }}
+
   - template: install-deps.yml
     parameters:
       installAdoRequirements: ${{ eq(parameters.mode, 'postmerge') }}
@@ -46,11 +58,6 @@ steps:
   # Sets job variables:
   # - baseCommit
   # - sourceCommit
-  - ${{ if eq(parameters.mode, 'pr') }}:
-    - template: commit-range-pr.yml
-      parameters:
-        baseCommitVar: ${{ parameters.baseCommitVar }}
-        sourceCommitVar: ${{ parameters.sourceCommitVar }}
   - ${{ if eq(parameters.mode, 'postmerge') }}:
     - template: commit-range-postmerge.yml
       parameters:

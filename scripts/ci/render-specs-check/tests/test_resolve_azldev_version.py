@@ -41,6 +41,72 @@ def test_equal_versions_skip_merge_poll(monkeypatch: pytest.MonkeyPatch) -> None
         pytest.fail(f"expected one PR snapshot request, got {github_api.call_count}")
 
 
+def test_read_version_uses_selected_azldev_module(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+) -> None:
+    """Read the selected azldev module version through Go."""
+    modfile = tmp_path / "go.mod"
+    modfile.write_text("module example.com/test\n", encoding="ascii")
+    run = Mock(
+        return_value=subprocess.CompletedProcess(
+            [],
+            0,
+            stdout="v1.2.3\n",
+            stderr="",
+        )
+    )
+    monkeypatch.setattr(resolver.subprocess, "run", run)
+
+    if resolver.read_version(modfile) != "v1.2.3":
+        pytest.fail("unexpected azldev tool version")
+    command = run.call_args.args[0]
+    if command[:2] != ["go", "list"] or "-mod=readonly" not in command:
+        pytest.fail(f"unexpected Go command: {command}")
+
+
+def test_resolve_hash_validates_module_origin(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Resolve a selected module version to its full Microsoft repository hash."""
+    revision = "c" * 40
+    run = Mock(
+        return_value=subprocess.CompletedProcess(
+            [],
+            0,
+            stdout=(
+                '{"Origin":{"VCS":"git",'
+                '"URL":"https://github.com/microsoft/azure-linux-dev-tools",'
+                f'"Hash":"{revision}"}}}}'
+            ),
+            stderr="",
+        )
+    )
+    monkeypatch.setattr(resolver.subprocess, "run", run)
+
+    if resolver.resolve_hash("v1.2.3") != revision:
+        pytest.fail("unexpected resolved hash")
+
+
+def test_hash_cli_emits_resolved_hash(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Print the hash resolved from the module tool requirement."""
+    revision = "d" * 40
+    monkeypatch.setattr(resolver, "read_version", Mock(return_value="v1.2.3"))
+    monkeypatch.setattr(resolver, "resolve_hash", Mock(return_value=revision))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resolve_azldev_version.py", "hash", str(tmp_path / "go.mod")],
+    )
+
+    if resolver.main() != 0:
+        pytest.fail("hash resolver unexpectedly failed")
+    if capsys.readouterr().out != f"{revision}\n":
+        pytest.fail("hash resolver emitted unexpected output")
+
+
 def test_differing_versions_use_test_merge_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use the test-merge pin when the base and PR-head pins differ."""
     github_api = Mock(
@@ -51,6 +117,7 @@ def test_differing_versions_use_test_merge_version(monkeypatch: pytest.MonkeyPat
         ]
     )
     monkeypatch.setattr(resolver, "github_api", github_api)
+    monkeypatch.setattr(resolver, "_version_from_content", Mock(return_value="v2.0.0"))
     monkeypatch.setattr(resolver.time, "sleep", Mock())
 
     version, render_all = resolver.resolve_version(
@@ -62,7 +129,7 @@ def test_differing_versions_use_test_merge_version(monkeypatch: pytest.MonkeyPat
     if version != "v2.0.0" or not render_all:
         pytest.fail(f"unexpected resolution: version={version!r}, render_all={render_all!r}")
     content_endpoint = github_api.call_args_list[-1].args[0]
-    if content_endpoint != "repos/microsoft/azurelinux/contents/.azldev-version?ref=refs/pull/1/merge":
+    if content_endpoint != "repos/microsoft/azurelinux/contents/go.mod?ref=refs/pull/1/merge":
         pytest.fail(f"unexpected merge-ref endpoint: {content_endpoint}")
 
 
@@ -70,6 +137,7 @@ def test_behind_base_uses_base_version_without_full_render(monkeypatch: pytest.M
     """Avoid a full render when the PR merely has an older pin than base."""
     github_api = Mock(side_effect=[f"{'a' * 40}\t{'c' * 40}\ttrue\n", "v2.0.0\n"])
     monkeypatch.setattr(resolver, "github_api", github_api)
+    monkeypatch.setattr(resolver, "_version_from_content", Mock(return_value="v2.0.0"))
 
     version, render_all = resolver.resolve_version(
         "v2.0.0",
@@ -150,23 +218,29 @@ def test_github_api_pins_current_rest_version(monkeypatch: pytest.MonkeyPatch) -
         pytest.fail(f"API version header missing from command: {command}")
 
 
-def test_main_rejects_multiline_output_injection(
+def test_main_rejects_module_without_azldev_requirement(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
 ) -> None:
-    """Reject a multiline pin without emitting attacker-controlled records."""
-    base_file = tmp_path / "base-version"
-    head_file = tmp_path / "head-version"
-    base_file.write_text("v1.2.3\n", encoding="ascii")
-    head_file.write_text("safe\nazldev-version=attacker-value\n", encoding="ascii")
+    """Reject a module without an azldev requirement before emitting output."""
+    base_file = tmp_path / "base.mod"
+    head_file = tmp_path / "head.mod"
+    base_file.write_text("module example.com/base\n", encoding="ascii")
+    head_file.write_text("module example.com/head\n", encoding="ascii")
     github_api = Mock()
     monkeypatch.setattr(resolver, "github_api", github_api)
+    monkeypatch.setattr(
+        resolver,
+        "_run_go",
+        Mock(side_effect=resolver.ResolutionError("azldev is not a known dependency")),
+    )
     monkeypatch.setattr(
         sys,
         "argv",
         [
             "resolve_azldev_version.py",
+            "post-merge",
             "--repo",
             "microsoft/azurelinux",
             "--pr-number",
@@ -175,22 +249,22 @@ def test_main_rejects_multiline_output_injection(
             "a" * 40,
             "--base-sha",
             "b" * 40,
-            "--base-version-file",
+            "--base-modfile",
             str(base_file),
-            "--head-version-file",
+            "--head-modfile",
             str(head_file),
         ],
     )
 
     if resolver.main() == 0:
-        pytest.fail("multiline version unexpectedly succeeded")
+        pytest.fail("module without azldev requirement unexpectedly succeeded")
     if capsys.readouterr().out:
         pytest.fail("resolver emitted machine-readable output after rejecting the version")
     github_api.assert_not_called()
 
 
 def test_read_version_rejects_symlink(tmp_path: Path) -> None:
-    """Reject a version-file symlink before reading its target."""
+    """Reject a go.mod symlink before parsing its target."""
     target = tmp_path / "target"
     link = tmp_path / "version"
     target.write_text("v1.2.3\n", encoding="ascii")

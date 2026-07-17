@@ -29,9 +29,5 @@ jobs:
           go-version: stable
           cache: false
 
-      - name: Install azldev
-        run: |
-          go install "github.com/microsoft/azure-linux-dev-tools/cmd/azldev@$(cat .azldev-version)"
-
       - name: "Validate config (strict)"
-        run: azldev config dump > /dev/null
+        run: go tool azldev config dump > /dev/null

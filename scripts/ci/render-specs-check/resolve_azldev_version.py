@@ -1,14 +1,18 @@
-"""Resolve the azldev version that will be present after a PR merges.
+"""Resolve the selected azldev Go module to an immutable Git hash.
 
 Resolved values are printed as ``key=value`` records; diagnostics go to stderr.
+The ``hash`` command prints only the hash for local and non-PR callers.
 """
 
 from __future__ import annotations
 
 import argparse
+import json
+import os
 import re
 import subprocess
 import sys
+import tempfile
 import time
 from dataclasses import dataclass
 from pathlib import Path
@@ -16,10 +20,13 @@ from pathlib import Path
 VERSION_RE = re.compile(r"[0-9A-Za-z._+-]+")
 REPO_RE = re.compile(r"[A-Za-z0-9._-]+/[A-Za-z0-9._-]+")
 SHA_RE = re.compile(r"[0-9a-f]{40}")
+AZLDEV_MODULE = "github.com/microsoft/azure-linux-dev-tools"
+AZLDEV_REPOSITORY = f"https://{AZLDEV_MODULE}"
 MERGE_ATTEMPTS = 30
 CONTENT_ATTEMPTS = 5
 RETRY_SECONDS = 4
 GH_API_TIMEOUT_SECONDS = 15
+GO_COMMAND_TIMEOUT_SECONDS = 60
 GITHUB_API_VERSION = "2026-03-10"
 PR_FIELD_COUNT = 3
 
@@ -56,17 +63,78 @@ def validate_version(value: str, source: str) -> str:
     return version
 
 
+def _run_go(*args: str) -> str:
+    """Run Go with toolchain downloads disabled and return stdout."""
+    environment = os.environ.copy()
+    environment["GOTOOLCHAIN"] = "local"
+    try:
+        result = subprocess.run(
+            ["go", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+            timeout=GO_COMMAND_TIMEOUT_SECONDS,
+            env=environment,
+        )
+    except (OSError, subprocess.TimeoutExpired) as error:
+        message = f"could not run go {' '.join(args)}: {error}"
+        raise ResolutionError(message) from error
+    if result.returncode != 0:
+        detail = result.stderr.strip() or f"go exited with {result.returncode}"
+        message = f"go {' '.join(args)} failed: {detail}"
+        raise ResolutionError(message)
+    return result.stdout
+
+
 def read_version(path: Path) -> str:
-    """Read a version file without following an untrusted symlink."""
+    """Read Go's selected azldev version without following an untrusted symlink."""
     if path.is_symlink():
         message = f"{path} must be a regular file, not a symlink"
         raise ResolutionError(message)
+    if not path.is_file():
+        message = f"{path} must be a regular file"
+        raise ResolutionError(message)
+    version = _run_go(
+        "list",
+        "-mod=readonly",
+        f"-modfile={path.resolve()}",
+        "-m",
+        "-f",
+        "{{.Version}}",
+        AZLDEV_MODULE,
+    )
+    return validate_version(version, f"{path} azldev version")
+
+
+def _version_from_content(content: str, source: str) -> str:
+    """Parse an API-provided go.mod through Go and return its azldev version."""
     try:
-        value = path.read_text(encoding="ascii")
+        with tempfile.TemporaryDirectory() as directory:
+            modfile = Path(directory, "go.mod")
+            modfile.write_text(content, encoding="utf-8")
+            return validate_version(read_version(modfile), f"{source} azldev version")
     except (OSError, UnicodeError) as error:
-        message = f"could not read {path}: {error}"
+        message = f"could not parse {source}: {error}"
         raise ResolutionError(message) from error
-    return validate_version(value, str(path))
+
+
+def resolve_hash(version: str) -> str:
+    """Resolve an azldev module version to its full Microsoft Git revision."""
+    version = validate_version(version, "azldev version")
+    try:
+        module = json.loads(_run_go("mod", "download", "-json", f"{AZLDEV_MODULE}@{version}"))
+    except json.JSONDecodeError as error:
+        message = f"go returned invalid JSON while resolving {AZLDEV_MODULE}@{version}"
+        raise ResolutionError(message) from error
+    origin = module.get("Origin", {}) if isinstance(module, dict) else {}
+    if not isinstance(origin, dict) or origin.get("VCS") != "git" or origin.get("URL") != AZLDEV_REPOSITORY:
+        message = f"Go resolved {AZLDEV_MODULE}@{version} from an unexpected source"
+        raise ResolutionError(message)
+    revision = origin.get("Hash", "")
+    if not isinstance(revision, str) or not SHA_RE.fullmatch(revision):
+        message = f"Go did not resolve {AZLDEV_MODULE}@{version} to a full Git hash"
+        raise ResolutionError(message)
+    return revision
 
 
 def validate_inputs(pull_request: PullRequest) -> None:
@@ -157,20 +225,20 @@ def _read_merged_version(pull_request: PullRequest) -> str:
     """Read the azldev pin from the pull request merge ref."""
     # A moving merge ref matters only if another pin change lands; that supersedes this run or conflicts.
     merge_ref = f"refs/pull/{pull_request.number}/merge"
-    endpoint = f"repos/{pull_request.repo}/contents/.azldev-version?ref={merge_ref}"
+    endpoint = f"repos/{pull_request.repo}/contents/go.mod?ref={merge_ref}"
     last_error: GitHubApiError | None = None
     for attempt in range(1, CONTENT_ATTEMPTS + 1):
         try:
             content = github_api(endpoint, "-H", "Accept: application/vnd.github.raw")
         except GitHubApiError as error:
             last_error = error
-            _log(f"Could not read the post-merge .azldev-version ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
+            _log(f"Could not read the post-merge go.mod ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
             if attempt < CONTENT_ATTEMPTS:
                 time.sleep(RETRY_SECONDS)
         else:
-            return validate_version(content, "post-merge .azldev-version")
+            return _version_from_content(content, "post-merge go.mod")
 
-    message = f"could not read .azldev-version from the pull request merge ref: {last_error}"
+    message = f"could not read go.mod from the pull request merge ref: {last_error}"
     raise ResolutionError(message)
 
 
@@ -197,12 +265,18 @@ def resolve_version(
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--repo", required=True, help="GitHub owner/repository")
-    parser.add_argument("--pr-number", required=True, type=int, help="pull request number")
-    parser.add_argument("--head-sha", required=True, help="expected PR head commit")
-    parser.add_argument("--base-sha", required=True, help="trusted base commit")
-    parser.add_argument("--base-version-file", required=True, type=Path, help="base azldev version file")
-    parser.add_argument("--head-version-file", required=True, type=Path, help="PR-head azldev version file")
+    commands = parser.add_subparsers(dest="command", required=True)
+
+    hash_parser = commands.add_parser("hash", help="resolve one go.mod to an azldev hash")
+    hash_parser.add_argument("modfile", type=Path)
+
+    post_merge_parser = commands.add_parser("post-merge", help="resolve the hash after a pull request merges")
+    post_merge_parser.add_argument("--repo", required=True, help="GitHub owner/repository")
+    post_merge_parser.add_argument("--pr-number", required=True, type=int, help="pull request number")
+    post_merge_parser.add_argument("--head-sha", required=True, help="expected PR head commit")
+    post_merge_parser.add_argument("--base-sha", required=True, help="trusted base commit")
+    post_merge_parser.add_argument("--base-modfile", required=True, type=Path, help="base Go module file")
+    post_merge_parser.add_argument("--head-modfile", required=True, type=Path, help="PR-head Go module file")
     return parser.parse_args()
 
 
@@ -210,24 +284,29 @@ def main() -> int:
     """Resolve the version and emit machine-readable output."""
     args = parse_args()
     try:
-        base_version = read_version(args.base_version_file)
-        head_version = read_version(args.head_version_file)
+        if args.command == "hash":
+            print(resolve_hash(read_version(args.modfile)))
+            return 0
+
         pull_request = PullRequest(
             repo=args.repo,
             number=args.pr_number,
             head_sha=args.head_sha,
             base_sha=args.base_sha,
         )
+        base_version = read_version(args.base_modfile)
+        head_version = read_version(args.head_modfile)
         version, render_all = resolve_version(
             base_version=base_version,
             head_version=head_version,
             pull_request=pull_request,
         )
+        revision = resolve_hash(version)
         _log(
-            f"Resolved azldev version: {version}; render all: {str(render_all).lower()} "
+            f"Resolved azldev version: {version} ({revision}); render all: {str(render_all).lower()} "
             f"(base: {base_version}, PR head: {head_version})"
         )
-        print(f"azldev-version={version}")
+        print(f"azldev-hash={revision}")
         print(f"render-all={str(render_all).lower()}")
     except ResolutionError as error:
         _log(f"Error: {error}")
