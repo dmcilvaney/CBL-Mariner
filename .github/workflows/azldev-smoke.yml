@@ -1,10 +1,10 @@
 # Smoke-test the azldev tool declared in go.mod.
 #
-# When a PR updates the tool declaration (or touches the runner image / this
-# workflow), build the runner container with its resolved immutable hash and confirm the resulting
-# binary can (a) run and (b) parse every component definition in the repo via
-# `azldev component list`. This catches the two failure modes of a version bump:
-# the pin doesn't `go install`, or the new version breaks on the repo's TOMLs.
+# When a PR updates the tool declaration or its resolver (or touches the runner
+# image / this workflow), build the runner container with its resolved immutable
+# hash and confirm the resulting binary can (a) run and (b) parse every component
+# definition in the repo via `azldev component list`. This catches resolver/Go
+# integration regressions, pins that do not install, and incompatible TOMLs.
 name: "azldev Smoke Test"
 
 on:
@@ -15,6 +15,7 @@ on:
       - "go.sum"
       - ".github/workflows/containers/azldev-runner.Dockerfile"
       - ".github/workflows/azldev-smoke.yml"
+      - "scripts/ci/render-specs-check/resolve_azldev_version.py"
   workflow_dispatch:
 
 # Cancel in-progress runs of this workflow if a new run is triggered.

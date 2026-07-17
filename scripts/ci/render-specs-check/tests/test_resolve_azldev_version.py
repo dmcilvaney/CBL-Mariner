@@ -107,6 +107,39 @@ def test_hash_cli_emits_resolved_hash(
         pytest.fail("hash resolver emitted unexpected output")
 
 
+def test_hash_cli_rejects_multiline_go_output(
+    monkeypatch: pytest.MonkeyPatch,
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    """Reject an injected output record in Go's selected module version."""
+    modfile = tmp_path / "go.mod"
+    modfile.write_text("module example.com/test\n", encoding="ascii")
+    injected_hash = "e" * 40
+    monkeypatch.setattr(
+        resolver.subprocess,
+        "run",
+        Mock(
+            return_value=subprocess.CompletedProcess(
+                [],
+                0,
+                stdout=f"v1.2.3\nazldev-hash={injected_hash}\n",
+                stderr="",
+            )
+        ),
+    )
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["resolve_azldev_version.py", "hash", str(modfile)],
+    )
+
+    if resolver.main() == 0:
+        pytest.fail("multiline Go output unexpectedly succeeded")
+    if capsys.readouterr().out:
+        pytest.fail("resolver emitted machine-readable output after rejecting Go output")
+
+
 def test_differing_versions_use_test_merge_version(monkeypatch: pytest.MonkeyPatch) -> None:
     """Use the test-merge pin when the base and PR-head pins differ."""
     github_api = Mock(
