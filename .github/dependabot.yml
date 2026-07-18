@@ -42,8 +42,9 @@ updates:
         patterns:
           - "*"
 
-  # azldev's direct dependency and its transitive module dependencies.
-  # We control azldev publishing, so we can bump it immediately when a new release is cut.
+  # Keep the direct Azure Linux tool current without opening standalone PRs for
+  # its transitive dependencies. Add another dependency-name here for each
+  # additional repository-managed Go tool.
   - package-ecosystem: gomod
     directory: /tools/azldev
     schedule:
@@ -51,7 +52,5 @@ updates:
     open-pull-requests-limit: 5
     labels:
       - dependencies
-    groups:
-      go:
-        patterns:
-          - "*"
+    allow:
+      - dependency-name: github.com/microsoft/azure-linux-dev-tools
