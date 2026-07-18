@@ -63,7 +63,7 @@ def validate_version(value: str, source: str) -> str:
     return version
 
 
-def _run_go(*args: str) -> str:
+def _run_go(*args: str, cwd: Path | None = None) -> str:
     """Run Go with toolchain downloads disabled and return stdout."""
     environment = os.environ.copy()
     environment["GOTOOLCHAIN"] = "local"
@@ -73,6 +73,7 @@ def _run_go(*args: str) -> str:
             capture_output=True,
             text=True,
             check=False,
+            cwd=cwd,
             timeout=GO_COMMAND_TIMEOUT_SECONDS,
             env=environment,
         )
@@ -97,11 +98,11 @@ def read_version(path: Path) -> str:
     version = _run_go(
         "list",
         "-mod=readonly",
-        f"-modfile={path.resolve()}",
         "-m",
         "-f",
         "{{.Version}}",
         AZLDEV_MODULE,
+        cwd=path.parent,
     )
     return validate_version(version, f"{path} azldev version")
 
@@ -221,24 +222,25 @@ def _wait_for_merge_ref(pull_request: PullRequest, *, wait_for_merge: bool) -> N
     raise ResolutionError(message)
 
 
-def _read_merged_version(pull_request: PullRequest) -> str:
+def _read_merged_version(pull_request: PullRequest, modfile: Path) -> str:
     """Read the azldev pin from the pull request merge ref."""
     # A moving merge ref matters only if another pin change lands; that supersedes this run or conflicts.
     merge_ref = f"refs/pull/{pull_request.number}/merge"
-    endpoint = f"repos/{pull_request.repo}/contents/go.mod?ref={merge_ref}"
+    modfile_path = modfile.as_posix()
+    endpoint = f"repos/{pull_request.repo}/contents/{modfile_path}?ref={merge_ref}"
     last_error: GitHubApiError | None = None
     for attempt in range(1, CONTENT_ATTEMPTS + 1):
         try:
             content = github_api(endpoint, "-H", "Accept: application/vnd.github.raw")
         except GitHubApiError as error:
             last_error = error
-            _log(f"Could not read the post-merge go.mod ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
+            _log(f"Could not read post-merge {modfile_path} ({attempt}/{CONTENT_ATTEMPTS}): {error}; retrying...")
             if attempt < CONTENT_ATTEMPTS:
                 time.sleep(RETRY_SECONDS)
         else:
-            return _version_from_content(content, "post-merge go.mod")
+            return _version_from_content(content, f"post-merge {modfile_path}")
 
-    message = f"could not read go.mod from the pull request merge ref: {last_error}"
+    message = f"could not read {modfile_path} from the pull request merge ref: {last_error}"
     raise ResolutionError(message)
 
 
@@ -247,6 +249,7 @@ def resolve_version(
     head_version: str,
     *,
     pull_request: PullRequest,
+    merged_modfile: Path = Path("go.mod"),
 ) -> tuple[str, bool]:
     """Return the post-merge version and whether all specs must be rendered."""
     validate_inputs(pull_request)
@@ -258,7 +261,7 @@ def resolve_version(
     if not versions_differ:
         return base_version, False
 
-    merged_version = _read_merged_version(pull_request)
+    merged_version = _read_merged_version(pull_request, merged_modfile)
     return merged_version, merged_version != base_version
 
 
@@ -300,6 +303,7 @@ def main() -> int:
             base_version=base_version,
             head_version=head_version,
             pull_request=pull_request,
+            merged_modfile=args.base_modfile,
         )
         revision = resolve_hash(version)
         _log(

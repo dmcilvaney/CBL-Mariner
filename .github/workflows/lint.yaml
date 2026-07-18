@@ -30,4 +30,4 @@ jobs:
           cache: false
 
       - name: "Validate config (strict)"
-        run: go tool azldev config dump > /dev/null
+        run: go -C tools/azldev run github.com/microsoft/azure-linux-dev-tools/cmd/azldev config dump > /dev/null

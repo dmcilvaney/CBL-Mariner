@@ -4,19 +4,19 @@
 
 ### Install azldev
 
-The [`azldev`](https://github.com/microsoft/azure-linux-dev-tools) CLI tool drives all component, image, and build workflows. Its version is declared as a Go tool in the repo-root `go.mod`.
+The [`azldev`](https://github.com/microsoft/azure-linux-dev-tools) CLI tool drives all component, image, and build workflows. Its version is declared in `tools/azldev/go.mod`.
 
 From the repository root, install the selected version with:
 
 ```bash
-go install github.com/microsoft/azure-linux-dev-tools/cmd/azldev
+go -C tools/azldev install github.com/microsoft/azure-linux-dev-tools/cmd/azldev
 azldev --version
 ```
 
 Go installs the command in `$(go env GOPATH)/bin`; add that directory to `PATH` if needed. Installation is recommended for normal development and shell completion. For one-off use without installing:
 
 ```bash
-go tool azldev --version
+go -C tools/azldev run github.com/microsoft/azure-linux-dev-tools/cmd/azldev --version
 ```
 
 ### Render specs

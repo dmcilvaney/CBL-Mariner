@@ -35,9 +35,9 @@ RUN tdnf -y install \
     symcrypt-openssl \
     && tdnf clean all
 
-# The azldev Git hash is resolved from the tool declared in the repo-root
-# go.mod. Callers (check-rendered-specs.yml, etc.) pass it via --build-arg so
-# the Dockerfile never needs repo-root build context.
+# The azldev Git hash is resolved from tools/azldev/go.mod. Callers
+# (check-rendered-specs.yml, etc.) pass it via --build-arg so the Dockerfile
+# never needs repo-root build context.
 # No default — omitting --build-arg will fail the build loudly.
 # Optional Go module proxy for the `go install` below. Callers that build
 # behind an internal-only proxy forward it via --build-arg GOPROXY=...; Docker

@@ -4,14 +4,11 @@ from __future__ import annotations
 
 import subprocess
 import sys
-from typing import TYPE_CHECKING
+from pathlib import Path
 from unittest.mock import Mock
 
 import pytest
 import resolve_azldev_version as resolver
-
-if TYPE_CHECKING:
-    from pathlib import Path
 
 
 def pull_request(*, number: int = 1, head_sha: str = "a" * 40, base_sha: str = "b" * 40) -> resolver.PullRequest:
@@ -61,8 +58,14 @@ def test_read_version_uses_selected_azldev_module(
     if resolver.read_version(modfile) != "v1.2.3":
         pytest.fail("unexpected azldev tool version")
     command = run.call_args.args[0]
-    if command[:2] != ["go", "list"] or "-mod=readonly" not in command:
+    if (
+        command[:2] != ["go", "list"]
+        or "-mod=readonly" not in command
+        or any(argument.startswith("-modfile=") for argument in command)
+    ):
         pytest.fail(f"unexpected Go command: {command}")
+    if run.call_args.kwargs.get("cwd") != modfile.parent:
+        pytest.fail(f"Go did not run from the module directory: {run.call_args.kwargs}")
 
 
 def test_resolve_hash_validates_module_origin(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -156,13 +159,14 @@ def test_differing_versions_use_test_merge_version(monkeypatch: pytest.MonkeyPat
     version, render_all = resolver.resolve_version(
         "v1.2.3",
         "v2.0.0",
+        merged_modfile=Path("tools/azldev/go.mod"),
         pull_request=pull_request(base_sha="c" * 40),
     )
 
     if version != "v2.0.0" or not render_all:
         pytest.fail(f"unexpected resolution: version={version!r}, render_all={render_all!r}")
     content_endpoint = github_api.call_args_list[-1].args[0]
-    if content_endpoint != "repos/microsoft/azurelinux/contents/go.mod?ref=refs/pull/1/merge":
+    if content_endpoint != "repos/microsoft/azurelinux/contents/tools/azldev/go.mod?ref=refs/pull/1/merge":
         pytest.fail(f"unexpected merge-ref endpoint: {content_endpoint}")
 
 

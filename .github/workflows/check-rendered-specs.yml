@@ -114,8 +114,8 @@ jobs:
             --pr-number "$PR_NUMBER" \
             --head-sha "$PR_HEAD_SHA" \
             --base-sha "$(git rev-parse HEAD)" \
-            --base-modfile go.mod \
-            --head-modfile pr-head/go.mod)"
+            --base-modfile tools/azldev/go.mod \
+            --head-modfile pr-head/tools/azldev/go.mod)"
           echo "$resolve_output"
 
           azldev_hash="$(sed -n 's/^azldev-hash=//p' <<< "$resolve_output")"

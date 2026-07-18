@@ -42,10 +42,10 @@ updates:
         patterns:
           - "*"
 
-  # The azldev tool declaration and its transitive module dependencies.
+  # azldev's direct dependency and its transitive module dependencies.
   # We control azldev publishing, so we can bump it immediately when a new release is cut.
   - package-ecosystem: gomod
-    directory: /
+    directory: /tools/azldev
     schedule:
       interval: daily
     open-pull-requests-limit: 5

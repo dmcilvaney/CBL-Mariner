@@ -1,4 +1,4 @@
-# Smoke-test the azldev tool declared in go.mod.
+# Smoke-test the azldev tool declared in tools/azldev/go.mod.
 #
 # When a PR updates the tool declaration or its resolver (or touches the runner
 # image / this workflow), build the runner container with its resolved immutable
@@ -11,8 +11,8 @@ on:
   pull_request:
     branches: ["4.0"]
     paths:
-      - "go.mod"
-      - "go.sum"
+      - "tools/azldev/go.mod"
+      - "tools/azldev/go.sum"
       - ".github/workflows/containers/azldev-runner.Dockerfile"
       - ".github/workflows/azldev-smoke.yml"
       - "scripts/ci/render-specs-check/resolve_azldev_version.py"
@@ -47,7 +47,7 @@ jobs:
       - name: Build azldev runner container
         run: |
           set -euo pipefail
-          azldev_hash="$(python3 scripts/ci/render-specs-check/resolve_azldev_version.py hash go.mod)"
+          azldev_hash="$(python3 scripts/ci/render-specs-check/resolve_azldev_version.py hash tools/azldev/go.mod)"
           if ! [[ "$azldev_hash" =~ ^[0-9a-f]{40}$ ]]; then
             echo "::error::resolver emitted an invalid azldev hash"
             exit 1

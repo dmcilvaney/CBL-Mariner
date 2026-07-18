@@ -36,9 +36,9 @@ parameters:
 steps:
   - template: ensure-full-history.yml
 
-  # Validate the PR merge checkout before install-deps resolves azldev from its
-  # go.mod. This is the same post-merge module state the GitHub render gate
-  # reads from refs/pull/<number>/merge.
+  # Validate the PR merge checkout before install-deps resolves azldev from
+  # tools/azldev/go.mod. This is the same post-merge module state the GitHub
+  # render gate reads from refs/pull/<number>/merge.
   # Sets job variables:
   # - baseCommit
   # - sourceCommit

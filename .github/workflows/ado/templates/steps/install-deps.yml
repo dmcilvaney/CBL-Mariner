@@ -3,7 +3,7 @@
 #
 # Step template: authenticate to the internal pip feed, then install the
 # requested host tools. Each tool is opt-in via a boolean parameter. azldev's
-# immutable hash is resolved from the committed go.mod before installation.
+# immutable hash is resolved from the committed tools/azldev/go.mod before installation.
 
 parameters:
   # azure-devops SDK (scripts/ci/ado/requirements.txt).
@@ -63,10 +63,10 @@ steps:
         set -euo pipefail
         echo "##[group]Azldev (host)"
         # PR callers validate the synthetic merge checkout before reaching this
-        # step, so go.mod selects the same post-merge version as the GitHub
-        # render gate. Installing by resolved hash also ignores PR-controlled
-        # replace directives when building the host binary.
-        AZLDEV_HASH="$(python3 scripts/ci/render-specs-check/resolve_azldev_version.py hash go.mod)"
+        # step, so tools/azldev/go.mod selects the same post-merge version as
+        # the GitHub render gate. Installing by resolved hash also ignores
+        # PR-controlled replace directives when building the host binary.
+        AZLDEV_HASH="$(python3 scripts/ci/render-specs-check/resolve_azldev_version.py hash tools/azldev/go.mod)"
         if ! printf '%s' "$AZLDEV_HASH" | grep -Eq '^[0-9a-f]{40}$'; then
           echo "##[error]Resolver emitted an invalid azldev hash"
           exit 1

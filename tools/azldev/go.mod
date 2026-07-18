@@ -1,8 +1,8 @@
-module github.com/microsoft/azurelinux
+module github.com/microsoft/azurelinux/tools/azldev
 
 go 1.25.6
 
-tool github.com/microsoft/azure-linux-dev-tools/cmd/azldev
+require github.com/microsoft/azure-linux-dev-tools v0.1.1-0.20260604190238-0256227f5434
 
 require (
 	cyphar.com/go-pathrs v0.2.4 // indirect
@@ -68,7 +68,6 @@ require (
 	github.com/mattn/go-isatty v0.0.22 // indirect
 	github.com/mattn/go-localereader v0.0.1 // indirect
 	github.com/mattn/go-runewidth v0.0.21 // indirect
-	github.com/microsoft/azure-linux-dev-tools v0.1.1-0.20260604190238-0256227f5434 // indirect
 	github.com/mitchellh/hashstructure/v2 v2.0.2 // indirect
 	github.com/muesli/ansi v0.0.0-20230316100256-276c6243b2f6 // indirect
 	github.com/muesli/cancelreader v0.2.2 // indirect
