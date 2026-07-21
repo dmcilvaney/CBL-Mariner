@@ -12,6 +12,10 @@ go install "github.com/microsoft/azure-linux-dev-tools/cmd/azldev@$(cat .azldev-
 
 > **Note:** azldev is still in active development, using the latest commit from the `main` branch is recommended for the most up-to-date features and fixes.
 
+### azldev documentation
+
+See the [azldev user guide](https://github.com/microsoft/azure-linux-dev-tools/tree/main/docs/user) for how-to guides and reference documentation covering components, overlays, images, configuration, and CLI commands.
+
 ### Render specs
 
 The `specs/` directory (as specified by `rendered-specs-dir` config) contains "rendered" spec files created by `azldev`. They are a read-only snapshot of the final spec files after all overlays and modifications have been applied. They are the canonical source for what will be built and packaged.
