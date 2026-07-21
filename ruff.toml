@@ -23,6 +23,23 @@ fixable = ["ALL"]
 # with sibling-module imports, not imported as a package, so they intentionally
 # have no __init__.py. Silence the implicit-namespace-package rule for that tree.
 "scripts/ci/**/*.py" = ["INP001"]
+# eval/ is a self-contained spike (agent tooling-evaluation harness) slated to be
+# extracted to its own repo. Waive documentation/exception-message ceremony for
+# it; all substantive rules (types, security, bugs) still apply. See eval/README.
+"eval/**/*.py" = [
+    "INP001",  # direct-execution script, not a package
+    "D100",
+    "D101",
+    "D102",
+    "D103",    # docstrings-everywhere ceremony
+    "EM101",
+    "EM102",
+    "TRY003",
+    "TRY300",
+    "TRY301",  # inline exception messages are fine here
+    "PLR2004", # exit-code / timeout literals are self-evident
+    "PLR0915", # orchestrate() is a readable linear pipeline; splitting hurts it
+]
 
 [lint.isort]
 # Just force this, its better than dealing with a mishmash of modules that have annotations and those that don't

@@ -1,0 +1,4 @@
+# Eval run outputs and scratch workspaces are generated artifacts, not source.
+runs/
+workspaces/
+*.home/

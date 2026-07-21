@@ -1,0 +1,38 @@
+# Scenario: cpio overlay diagnosis-and-repair (azldev tooling-eval spike v0.1)
+#
+# The cpio component carries a `spec-search-replace` overlay that drops a stale
+# `BuildRequires: rmt` from the upstream Fedora spec (rmt has no provider in
+# Azure Linux). `break.patch` removes that overlay, so the rendered spec regains
+# the unresolvable `rmt` BuildRequires and the package fails to build. The actor
+# must diagnose the failure and re-establish the fix through the normal azldev
+# workflow (fix overlay -> render -> update locks) so it is PR-ready.
+#
+# The break is seeded OUTSIDE the actor's view; break.patch never appears in the
+# actor workspace, and workspace git history is flattened to a single baseline
+# commit so the fix cannot be recovered by reverting a commit.
+
+id = "cpio-overlay"
+component = "cpio"
+break_patch = "break.patch"
+timeout_s = 1800
+
+# Symptom-level, non-leaking goal shown to the actor. Names the component and the
+# observable failure, encodes the full-workflow bar via "pass CI / PR-ready", and
+# forbids consulting the upstream public repo (a known information-leak vector).
+# The synthetic-history note steers the actor away from git archaeology, which is a
+# dead end here (the seed flattens history) and a harness artifact, not real friction.
+goal = """
+The `cpio` component currently fails to build in Azure Linux.
+
+Investigate why `cpio` fails to build, fix the root cause, and prepare the change
+so that it would pass the repository's CI checks and be ready to open as a pull
+request.
+
+Note: the git history in this checkout has been flattened to a single synthetic
+baseline commit, so `git log`/`git blame`/reverting a commit will not reveal or
+undo the problem — diagnose it from the current tree state and the build output.
+
+This is a controlled exercise. Work only from this local checkout, its command-line
+tooling, and its documentation. Do not consult the upstream or public Azure Linux
+repository, or any other external copy of these package definitions.
+"""
