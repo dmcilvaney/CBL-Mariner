@@ -26,7 +26,7 @@ from pathlib import Path
 from urllib.parse import urlparse
 
 from _mcp_utils import (
-    FastMCP,
+    MCPServer,
     StatusDict,
     check_ssrf,
     load_env,
@@ -34,7 +34,7 @@ from _mcp_utils import (
     write_output,
 )
 
-mcp = FastMCP("koji")
+mcp = MCPServer("koji")
 
 # Load .env config — may set KOJI_BASE_URL and KOJI_INSECURE_URLS
 load_env()

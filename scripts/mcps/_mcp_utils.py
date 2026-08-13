@@ -29,7 +29,7 @@ except ImportError:
     sys.exit(1)
 
 try:
-    from mcp.server.fastmcp import FastMCP  # noqa: F401 — re-exported
+    from mcp.server import MCPServer  # noqa: F401 — re-exported
 except ImportError:
     sys.stderr.write("\n" + "=" * 60 + "\n")
     sys.stderr.write("  MISSING DEPENDENCY: 'mcp' package not found\n")
