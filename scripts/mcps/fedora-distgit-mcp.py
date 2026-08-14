@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
-"""Fedora Dist-Git MCP Server — exposes tools for querying Fedora's package
-repositories via the Pagure API and performing git-level searches (pickaxe,
-grep) on cloned repos.
+"""Fedora Dist-Git MCP Server.
+
+Exposes tools for querying Fedora's package repositories via the Pagure API and
+performing git-level searches (pickaxe, grep) on cloned repos.
 
 All fetched content and cloned repos are stored under a gitignored scratch
 directory to avoid bloating LLM context. Agents use read_file / grep_search
@@ -21,6 +22,7 @@ auto-approved.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import re
@@ -152,15 +154,14 @@ def _ensure_repo(package: str, auto_clean: bool, base_url: str) -> tuple[str, st
     if os.path.isdir(os.path.join(repo_dir, ".git")):
         _touch_repo(repo_dir)
         # Fetch latest refs (best-effort)
-        try:
+        with contextlib.suppress(Exception):
             subprocess.run(
                 ["git", "fetch", "--quiet", "--all"],
                 cwd=repo_dir,
                 capture_output=True,
+                check=False,
                 timeout=60,
             )
-        except Exception:
-            pass
         return repo_dir, None
 
     # Check cache capacity before cloning
@@ -174,6 +175,7 @@ def _ensure_repo(package: str, auto_clean: bool, base_url: str) -> tuple[str, st
         result = subprocess.run(
             ["git", "clone", "--quiet", clone_url, repo_dir],
             capture_output=True,
+            check=False,
             text=True,
             timeout=120,
         )
@@ -385,6 +387,7 @@ def distgit_search(
         result = subprocess.run(
             cmd,
             capture_output=True,
+            check=False,
             text=True,
             timeout=30,
         )
@@ -464,6 +467,7 @@ def distgit_show(
         result = subprocess.run(
             ["git", "--git-dir", git_dir, "show", "--stat", "--patch", commit, "--"],
             capture_output=True,
+            check=False,
             text=True,
             timeout=30,
         )

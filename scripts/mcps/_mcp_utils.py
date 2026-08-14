@@ -12,7 +12,7 @@ import sys
 import tempfile
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
+from urllib.parse import ParseResult, urlparse
 
 # Return type for all MCP tools — values may be str, int, list, or None.
 StatusDict = dict[str, Any]
@@ -99,7 +99,7 @@ def validate_base_url(base_url: str) -> tuple[str, str | None]:
     return normalized, None
 
 
-def effective_port(parsed) -> int | None:
+def effective_port(parsed: ParseResult) -> int | None:
     """Return the effective port for a parsed URL (explicit or scheme default)."""
     if parsed.port is not None:
         return parsed.port
