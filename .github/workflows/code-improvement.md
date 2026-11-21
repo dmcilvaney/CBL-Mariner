@@ -3,7 +3,7 @@ name: code-improvement
 description: Diagnose and fix kernel-update code or CI issues on Azure Linux 4.0
 intent: Deliver one reviewable stable-series Azure Linux kernel update targeting the 4.0 branch.
 on:
-  schedule: weekly on monday
+  workflow_dispatch:
   slash_command:
     name: code-improvement
     events: [issue_comment]
@@ -15,8 +15,8 @@ on:
       uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd # v8
       with:
         script: |
-          if (context.repo.owner !== "microsoft" || context.repo.repo !== "azurelinux") {
-            core.setFailed("This workflow is restricted to microsoft/azurelinux.");
+          if (context.repo.owner !== "dmcilvaney" || context.repo.repo !== "CBL-Mariner") {
+            core.setFailed("This test workflow is restricted to dmcilvaney/CBL-Mariner.");
             return;
           }
           if (context.eventName !== "schedule") return;
@@ -45,7 +45,7 @@ concurrency:
   group: code-improvement-kernel-4.0
   cancel-in-progress: false
 checkout:
-  ref: "4.0"
+  ref: "damcilva/code-improvement-kernel-4.0-test"
   fetch-depth: 0
   pull-request: false
 tools:
@@ -92,9 +92,10 @@ steps:
         -f .github/workflows/containers/azldev-runner.Dockerfile \
         .github/workflows/containers/
 safe-outputs:
+  staged: true
   create-pull-request:
     title-prefix: "[kernel-4.0] "
-    base-branch: "4.0"
+    base-branch: "damcilva/code-improvement-kernel-4.0-test"
     draft: true
     max: 1
     labels: ["4.0", "AutoUpgrade Kernel"]
@@ -136,6 +137,33 @@ evals:
 ---
 
 # Azure Linux 4.0 kernel maintenance
+
+## Fork runtime test: overrides the production task below
+
+This is a manual, runtime-only test in dmcilvaney/CBL-Mariner. DO NOT update
+kernel sources, commit changes, create issues or PRs, push branches, or act
+against microsoft/azurelinux. Do not execute the production maintenance task
+below. Instead, perform only these bounded runtime checks, then stop:
+
+1. Report available disk space and confirm the pre-agent baseline log exists.
+2. From inside the agent, run `docker version` and confirm
+   `localhost/azldev-runner` is available. Report failures verbatim without
+   exposing environment variables or credentials.
+3. Use the existing image to run `azldev version`, `mock --version`, and
+   `azldev comp list -p kernel -p kernel-headers -q -O json`. Mount only the
+   repository at `/workdir`, never tokens or the Docker socket. Use
+   `--cap-add=SYS_ADMIN --security-opt seccomp=unconfined
+   --security-opt apparmor=unconfined`, not `--privileged`.
+4. In a fresh container using the same image, inspect
+   `azldev adv mock shell --help`, then initialize the configured distro's mock
+   shell and run `rpm --version` and `cat /etc/os-release` inside it. Pipe `exit`
+   to terminate it. Bound this probe with `timeout 600`; do not install candidate
+   RPMs, change repository configuration, or attempt a kernel build. The fresh
+   container's ephemeral filesystem is the test-specific mock root.
+5. In your final output give each command, exit result, and whether Docker,
+   azldev configuration, and actual mock-chroot execution worked. An initialized
+   shell is required for mock success; `mock --version` alone is not sufficient.
+   Emit `noop` with these results. Safe outputs are staged as an extra safeguard.
 
 ## Outcome and boundaries
 
