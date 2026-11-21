@@ -1,0 +1,25 @@
+# gh-aw owns the generated lock; keep exceptions here rather than hand-editing it.
+# These exceptions apply only to this workflow, not other repository checks.
+rules:
+  dangerous-triggers:
+    ignore:
+      # Slash commands require issue_comment. gh-aw verifies trusted roles before
+      # activation; checkout is fixed to 4.0 with automatic PR checkout disabled.
+      # Contributor PR code is never executed by privileged host preparation.
+      - code-improvement.lock.yml
+  artipacked:
+    ignore:
+      # gh-aw persists credentials only in the separate safe-output job to apply
+      # its validated patch. Its artifacts use /tmp/gh-aw, not the checkout or .git.
+      # The agent checkout disables persistence; each job uses a fresh hosted VM.
+      - code-improvement.lock.yml
+  secrets-outside-env:
+    ignore:
+      # gh-aw-generated jobs reference inference, read-only API, and safe-output
+      # tokens without an Actions environment. Scheduled maintenance is unattended;
+      # environment approval is not the authorization boundary. Trusted-role
+      # activation, separate write jobs, protected-file policy, draft-only PRs,
+      # and human merge review provide that boundary. No release/cloud secrets
+      # are configured. Docker access exposes agent-job credentials, as documented
+      # in code-improvement.md; it does not share the safe-output job's VM.
+      - code-improvement.lock.yml
