@@ -29,6 +29,7 @@ on:
 if: needs.pre_activation.outputs.queue_result == 'success'
 permissions:
   contents: read
+  copilot-requests: write
   issues: read
   pull-requests: read
   actions: read
@@ -92,6 +93,7 @@ steps:
         -f .github/workflows/containers/azldev-runner.Dockerfile \
         .github/workflows/containers/
 safe-outputs:
+  staged: true
   create-pull-request:
     title-prefix: "[kernel-4.0] "
     base-branch: "damcilva/code-improvement-kernel-4.0-test"
@@ -136,6 +138,16 @@ evals:
 ---
 
 # Azure Linux 4.0 kernel maintenance
+
+## Final authentication-only test
+
+This manual run verifies inference using the automatic Actions token with
+`copilot-requests: write`. DO NOT perform the delivery or maintenance tasks below.
+Run `docker version`, report whether it succeeds, then emit `noop` stating that
+the agent started and executed the check. Do not edit files, commit, create a PR,
+or push. Never read or print credential values. The workflow token binding, not
+your own inspection of tokens, is the evidence for the authentication method.
+Stop after this check.
 
 ## Fork delivery test: overrides the production task below
 
