@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
   slash_command:
     name: code-improvement
-    events: [issue_comment]
+    events: [issue_comment, pull_request_comment]
   permissions:
     pull-requests: read
   steps:
