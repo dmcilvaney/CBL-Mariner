@@ -92,7 +92,6 @@ steps:
         -f .github/workflows/containers/azldev-runner.Dockerfile \
         .github/workflows/containers/
 safe-outputs:
-  staged: true
   create-pull-request:
     title-prefix: "[kernel-4.0] "
     base-branch: "damcilva/code-improvement-kernel-4.0-test"
@@ -138,32 +137,45 @@ evals:
 
 # Azure Linux 4.0 kernel maintenance
 
-## Fork runtime test: overrides the production task below
+## Fork delivery test: overrides the production task below
 
-This is a manual, runtime-only test in dmcilvaney/CBL-Mariner. DO NOT update
-kernel sources, commit changes, create issues or PRs, push branches, or act
-against microsoft/azurelinux. Do not execute the production maintenance task
-below. Instead, perform only these bounded runtime checks, then stop:
+This is an isolated delivery test in dmcilvaney/CBL-Mariner. DO NOT update kernel
+sources or act against microsoft/azurelinux. Do not execute the production task
+below. Modify ONLY `base/comps/kernel/agentic-workflow-test.txt`, an inert fixture
+that must never be merged into upstream. Do not render or build kernel RPMs.
 
-1. Report available disk space and confirm the pre-agent baseline log exists.
-2. From inside the agent, run `docker version` and confirm
-   `localhost/azldev-runner` is available. Report failures verbatim without
-   exposing environment variables or credentials.
-3. Use the existing image to run `azldev version`, `mock --version`, and
-   `azldev comp list -p kernel -p kernel-headers -q -O json`. Mount only the
-   repository at `/workdir`, never tokens or the Docker socket. Use
-   `--cap-add=SYS_ADMIN --security-opt seccomp=unconfined
-   --security-opt apparmor=unconfined`, not `--privileged`.
-4. In a fresh container using the same image, inspect
-   `azldev adv mock shell --help`, then initialize the configured distro's mock
-   shell and run `rpm --version` and `cat /etc/os-release` inside it. Pipe `exit`
-   to terminate it. Bound this probe with `timeout 600`; do not install candidate
-   RPMs, change repository configuration, or attempt a kernel build. The fresh
-   container's ephemeral filesystem is the test-specific mock root.
-5. In your final output give each command, exit result, and whether Docker,
-   azldev configuration, and actual mock-chroot execution worked. An initialized
-   shell is required for mock success; `mock --version` alone is not sufficient.
-   Emit `noop` with these results. Safe outputs are staged as an extra safeguard.
+For a manual workflow_dispatch run:
+
+1. Repeat the runtime mock probe in the prepared `localhost/azldev-runner` image.
+   Mount only the checkout at `/workdir`, use `--cap-add=SYS_ADMIN
+   --security-opt seccomp=unconfined --security-opt apparmor=unconfined`, and pipe
+   `rpm --version`, `cat /etc/os-release`, then `exit` to
+   `timeout 600 docker run --rm -i ... azldev adv mock shell -q`.
+   Use `bash -o pipefail`, save `$?` immediately after the pipeline, and record
+   the numeric status. DO NOT claim success from output alone. If nonzero,
+   report the failure using noop and stop without creating a PR.
+2. Check for an existing open `[kernel-4.0] fork delivery smoke test` PR in
+   dmcilvaney/CBL-Mariner. If one exists, noop and stop.
+3. Create the fixture with exactly `creation: verified` and a final newline.
+   Commit only that file with a Conventional Commit message.
+4. Request one draft PR through create-pull-request, with title
+   `fork delivery smoke test`, targeting `damcilva/code-improvement-kernel-4.0-test`.
+   Explain that this is a transport fixture, NOT a kernel update or kernel-build
+   validation, and must not be merged. Include the mock probe status and results.
+5. Report the safe-output acknowledgement without claiming publication before
+   the separate safe-output job finishes.
+
+For an issue_comment slash-command run on that test PR:
+
+1. Verify the triggering PR is open, same-repo dmcilvaney/CBL-Mariner, has the
+   configured prefix/labels, and targets `damcilva/code-improvement-kernel-4.0-test`.
+   Refuse every other PR. Use read-only GitHub tools to resolve its current head.
+2. Fetch and check out that exact PR head inside the agent. Do not execute its
+   scripts. Confirm its only change relative to the test base is the fixture.
+3. Append exactly `follow-up: verified` and a newline to the fixture, once only.
+   Commit it as a new commit on top of the existing PR head.
+4. Use only push-to-pull-request-branch targeting the triggering PR. Do not
+   create another PR, rebase, force-push, or modify any other file.
 
 ## Outcome and boundaries
 
